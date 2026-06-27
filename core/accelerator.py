@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import json
+import asyncio
 import re
 import secrets
 from pathlib import Path
@@ -519,3 +520,97 @@ def get_severity_tier(composite_delta: float) -> dict[str, Any]:
         "requires_confirmation": tier == "poor",
         "quarantined": tier == "critical",
     }
+
+
+def _token_count_from_response(payload: dict[str, Any]) -> int:
+    for key in ("count", "token_count", "num_tokens"):
+        value = payload.get(key)
+        if isinstance(value, int) and value >= 0:
+            return value
+    tokens = payload.get("tokens")
+    if isinstance(tokens, list):
+        return len(tokens)
+    raise ValueError("backend /tokenize response contains no token count")
+
+
+def _offline_token_count(text: str, tokenizer: Any) -> int:
+    if tokenizer is None:
+        raise RuntimeError(
+            "offline token estimation requires the model's Hugging Face tokenizer"
+        )
+    if callable(tokenizer):
+        encoded = tokenizer(text, add_special_tokens=False)
+    else:
+        encode = getattr(tokenizer, "encode", None)
+        if not callable(encode):
+            raise TypeError("fallback tokenizer must be callable or expose encode()")
+        encoded = encode(text, add_special_tokens=False)
+    if isinstance(encoded, dict):
+        encoded = encoded.get("input_ids")
+    elif hasattr(encoded, "input_ids"):
+        encoded = encoded.input_ids
+    if encoded is None:
+        raise ValueError("fallback tokenizer returned no input_ids")
+    count = len(encoded)
+    return int(math.ceil(count * 1.05))
+
+
+async def count_tokens_native(
+    text: str,
+    backend_url: str | None,
+    fallback_tokenizer: Any | None = None,
+) -> int:
+    """Use the live backend tokenizer, or HF tokenizer plus a 5% reserve."""
+
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+    if backend_url:
+        import aiohttp
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=2)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    f"{backend_url.rstrip('/')}/tokenize",
+                    json={"prompt": text},
+                ) as response:
+                    if response.status >= 400:
+                        raise RuntimeError(
+                            f"backend /tokenize returned HTTP {response.status}"
+                        )
+                    return _token_count_from_response(await response.json())
+        except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError):
+            if fallback_tokenizer is None:
+                raise
+    return _offline_token_count(text, fallback_tokenizer)
+
+
+def calc_available_ctx(
+    max_ctx: int,
+    system_prompt_tokens: int,
+    history_tokens: int,
+    online: bool,
+) -> int | dict[str, Any]:
+    """Return usable context tokens or a detailed overflow error."""
+
+    if max_ctx < 1:
+        raise ValueError("max_ctx must be positive")
+    if system_prompt_tokens < 0 or history_tokens < 0:
+        raise ValueError("token counts cannot be negative")
+    used_tokens = system_prompt_tokens + history_tokens
+    total_sequence_length = system_prompt_tokens + history_tokens
+    safety_reserve = (
+        0 if online else int(math.ceil(total_sequence_length * 0.05))
+    )
+    available_ctx = max_ctx - used_tokens - safety_reserve
+    if available_ctx < 256:
+        return {
+            "error": "context_overflow_error",
+            "max_ctx": max_ctx,
+            "system_prompt_tokens": system_prompt_tokens,
+            "history_tokens": history_tokens,
+            "safety_reserve": safety_reserve,
+            "available_ctx": available_ctx,
+            "online": online,
+        }
+    return available_ctx

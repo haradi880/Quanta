@@ -1,1 +1,23 @@
-{}
+{
+  "schema_version": "3.0",
+  "presets": [
+    {
+      "id": "json-api-extractor",
+      "name": "JSON API Extractor",
+      "prompt_text": "Extract the requested information and output valid JSON only. Do not include Markdown, commentary, or text outside the JSON value.",
+      "deletable": false
+    },
+    {
+      "id": "complexity-code-reviewer",
+      "name": "Complexity Code Reviewer",
+      "prompt_text": "Review the supplied code for correctness and efficiency. State Big-O time and space complexity for every function and explain any proposed optimization.",
+      "deletable": false
+    },
+    {
+      "id": "formal-logic-verifier",
+      "name": "Formal Logic Verifier",
+      "prompt_text": "Analyze each statement as formal logic. Classify it explicitly as an axiom, hypothesis, or theorem, and show the inference chain for every conclusion.",
+      "deletable": false
+    }
+  ]
+}

@@ -457,3 +457,42 @@ None.
 ### Questions asked and answers
 
 - The user clarified that the Enterprise Fat Binary is the primary deployment and supplied the exact §1.2 contract rules. Phase 9 uses those corrected contracts.
+## 2026-06-27 — Phase 10: Prompt and Persona Infrastructure
+
+### Tasks completed
+
+- 10.1 Added model-family system-prompt formatting for Llama 3, Mistral, ChatML, Phi-3, Gemma, and unknown families.
+- 10.2 Added the three required immutable persona presets.
+- 10.3 Added exact native `/tokenize` calls with Hugging Face tokenizer plus 5% offline fallback.
+- 10.4 Added online/offline context budgeting and structured overflow errors below 256 tokens.
+
+### Files created or modified
+
+- `core/prompt_controller.py` — native model-family prompt wrappers.
+- `config/persona_presets.json` — three built-in non-deletable personas.
+- `core/accelerator.py` — native/offline counting and context budgeting.
+- `tests/test_prompt_controller.py` — prompt, persona, HTTP tokenizer, reserve, and overflow tests.
+- `README.md`, `docs/ARCHITECTURE.md`, and `docs/BUILD_LOG.md` — Phase 10 operating record.
+
+### Verification commands and actual results
+
+- Llama 3 formatting matched the full header and end-of-turn token sequence.
+- All five named family paths and the raw unknown-family fallback passed.
+- Persona JSON contains exactly three required IDs with `deletable=false`.
+- A real local aiohttp `/tokenize` endpoint returned exact count `7`.
+- A 100-token offline estimate returned `105`.
+- §6.3 budgeting returned `3796` online and `3781` offline for max 4096, system 200, and history 100.
+- An under-256 budget returned `context_overflow_error` with its full token breakdown.
+- `python -m pytest tests -q` returned `27 passed`.
+
+### Deviations from the roadmap
+
+- The Task 10.4 Done When example states `3746` online and approximately `3703` offline, but §6.3's explicit formula yields `3796` and `3781` for the supplied inputs. The implementation follows the authoritative architecture formula and does not invent an undocumented deduction.
+
+### Needs manual verification
+
+- Compare token counts against each packaged backend after its native endpoint is wired into the final executable.
+
+### Questions asked and answers
+
+None.

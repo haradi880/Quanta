@@ -141,3 +141,11 @@ python -m ui.app
 Notebook users call `notebooks.adapter.run("owner/model")`. The desktop GUI
 reads its session JWT from `HARADIBOTS_SESSION_JWT` or
 `$HARADIBOTS_CACHE_ROOT/session.jwt`. No interface imports an execution engine.
+
+## Prompt and context control
+
+`core.prompt_controller.format_system_prompt()` formats system prompts for
+Llama 3, Mistral, ChatML, Phi-3, and Gemma. The accelerator uses a running
+backend's native `/tokenize` endpoint whenever possible. Offline estimates use
+the supplied Hugging Face tokenizer with a 5% reserve, and context budgets
+return a full `context_overflow_error` breakdown below 256 generation tokens.

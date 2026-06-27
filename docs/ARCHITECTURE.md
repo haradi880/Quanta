@@ -151,6 +151,16 @@ time. PostgreSQL, Ray, SLURM, Kubernetes, and remote Prometheus are optional
 team/server capabilities and are never prerequisites for standalone operation
 or local Done When checks.
 
+## Prompt and context control
+
+`core/prompt_controller.py` applies model-family special tokens without
+embedding interface logic. `core/accelerator.py` treats a live backend's
+`/tokenize` response as authoritative. Offline estimation uses the model's
+Hugging Face tokenizer with a 5% reserve. Context budgeting follows §6.3:
+online budgets deduct system and history tokens exactly; offline budgets also
+deduct 5% of their current total sequence length. Fewer than 256 available
+generation tokens produces a structured breakdown instead of inference.
+
 ## Environment variables
 
 - `HARADIBOTS_JWT_SECRET` is required when validating JWT credentials. It must
