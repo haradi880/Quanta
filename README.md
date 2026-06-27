@@ -95,3 +95,15 @@ selected worker loads its backend only when instantiated.
 
 EXL2 and vLLM require GPU/platform-specific installations and are intentionally
 not installed by the generic CPU setup.
+
+## Validation
+
+Phase 7 compares original and quantized model perplexity across logic,
+long-context retrieval, and code prompts:
+
+```powershell
+python -c "from core.accelerator import get_severity_tier; print(get_severity_tier(0.50))"
+```
+
+Golden prompts are scored separately and do not affect the weighted composite.
+Poor results require confirmation; critical results are quarantined.

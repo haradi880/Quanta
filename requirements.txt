@@ -15,6 +15,7 @@ huggingface_hub
 auto-gptq
 autoawq
 peft==0.7.1
+evaluate
 pytest
 nvidia-ml-py3
 psutil

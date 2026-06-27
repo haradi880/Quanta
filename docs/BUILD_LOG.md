@@ -326,3 +326,41 @@ None.
 ### Questions asked and answers
 
 None.
+## 2026-06-27 — Phase 7: Validation Engine
+
+### Tasks completed
+
+- 7.1 Added five logic prompts, five code prompts, a retrieval template, and weights summing to 1.0.
+- 7.2 Implemented causal perplexity for likelihood and Torch model interfaces.
+- 7.3 Implemented randomized linked-fact retrieval prompts near the evaluated context length.
+- 7.4 Implemented weighted original-versus-quantized validation with separately scored golden prompts.
+- 7.5 Implemented severity, confirmation, and quarantine policy mapping.
+
+### Files created or modified
+
+- `config/validation_suite.json` — validation prompts, templates, and weights.
+- `core/accelerator.py` — perplexity, retrieval generation, suite runner, and severity mapping.
+- `tests/test_validation.py` — formula, identical-model, poor, and critical regression tests.
+- `requirements.txt` — Hugging Face `evaluate` reference package.
+- `README.md`, `docs/ARCHITECTURE.md`, and `docs/BUILD_LOG.md` — Phase 7 usage and design records.
+
+### Verification commands and actual results
+
+- Hugging Face `evaluate` and `calc_perplexity` both returned `50107.171875` for `sshleifer/tiny-gpt2`; absolute delta was `0.0`.
+- A uniform analytical model returned perplexity `10.0`; scalar total likelihood correctly used `N-1` causal predictions.
+- A 4096-token retrieval target tokenized to 4119 tokens and preserved fact/question linkage.
+- Identical fake models returned composite delta `0.0` and severity `excellent`.
+- `get_severity_tier(0.50)` returned `poor` with `requires_confirmation=True`.
+- `get_severity_tier(0.61)` returned `critical` with `quarantined=True`.
+
+### Deviations from the roadmap
+
+- Golden prompts use independent perplexity deltas because the validation contract stores pass/fail but does not require free-form generation.
+
+### Needs manual verification
+
+- Run the suite against an actual source model and its quantized artifact on hardware capable of loading both.
+
+### Questions asked and answers
+
+- The user conditionally approved the perplexity work after mathematical verification. The implementation was checked against Hugging Face and matched exactly.

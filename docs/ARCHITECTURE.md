@@ -132,6 +132,13 @@ undeclared fields.
 - `ValidationResult` and its nested result models define per-domain,
   composite, severity, quarantine, confirmation, and golden-prompt results.
 
+Phase 7 validation is implemented in `core/accelerator.py`. It uses causal
+perplexity `exp(-mean(log p(x_i)))`, with `N-1` predicted tokens for a sequence
+of length `N`. The default composite weights are logic `0.30`, retrieval
+`0.35`, and code `0.35`. Severity boundaries are excellent through `0.05`,
+good through `0.15`, moderate through `0.35`, poor through `0.60`, and critical
+above `0.60`. Poor requires confirmation and critical is quarantined.
+
 ## Environment variables
 
 - `HARADIBOTS_JWT_SECRET` is required when validating JWT credentials. It must

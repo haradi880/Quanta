@@ -1,1 +1,68 @@
-{}
+{
+  "schema_version": "3.0",
+  "default_weights": {
+    "logic": 0.3,
+    "retrieval": 0.35,
+    "code": 0.35
+  },
+  "logic": [
+    {
+      "id": "logic-01",
+      "prompt": "A warehouse has 18 crates. Each crate contains 24 boxes, and 5 boxes from every crate are damaged. How many undamaged boxes remain?",
+      "expected_output": "342"
+    },
+    {
+      "id": "logic-02",
+      "prompt": "All blue widgets are heavy. No heavy widget floats. Widget Z is blue. Determine whether Widget Z floats and state the inference chain.",
+      "expected_output": "Widget Z does not float."
+    },
+    {
+      "id": "logic-03",
+      "prompt": "A train travels 120 km at 60 km/h and then 150 km at 75 km/h. What is the total travel time, excluding stops?",
+      "expected_output": "4 hours"
+    },
+    {
+      "id": "logic-04",
+      "prompt": "Mira is older than Chen. Chen is older than Dev. Ana is younger than Dev. Order the four people from oldest to youngest.",
+      "expected_output": "Mira, Chen, Dev, Ana"
+    },
+    {
+      "id": "logic-05",
+      "prompt": "A machine doubles its output each hour. It produces 7 units in hour one. How many total units does it produce during the first five hours?",
+      "expected_output": "217"
+    }
+  ],
+  "code": [
+    {
+      "id": "code-01",
+      "prompt": "Write a Python function is_palindrome(text) that ignores case and non-alphanumeric characters.",
+      "expected_output": "The function returns True for 'A man, a plan, a canal: Panama' and False for 'HaradiBots'."
+    },
+    {
+      "id": "code-02",
+      "prompt": "Write a Python function deduplicate(items) that preserves first-seen order and works for hashable values.",
+      "expected_output": "deduplicate([3, 1, 3, 2, 1]) returns [3, 1, 2]."
+    },
+    {
+      "id": "code-03",
+      "prompt": "Write a Python binary_search(sorted_values, target) that returns the target index or -1.",
+      "expected_output": "binary_search([1, 4, 7, 9], 7) returns 2 and searching for 5 returns -1."
+    },
+    {
+      "id": "code-04",
+      "prompt": "Write a Python function flatten(nested) that recursively flattens lists while leaving non-list values unchanged.",
+      "expected_output": "flatten([1, [2, [3]], 4]) returns [1, 2, 3, 4]."
+    },
+    {
+      "id": "code-05",
+      "prompt": "Write a Python context manager elapsed_time() that yields a callable returning elapsed monotonic seconds.",
+      "expected_output": "The implementation uses time.monotonic and reports a non-negative duration."
+    }
+  ],
+  "retrieval": {
+    "document_template": "{prefix_context}\nFACT: {unique_fact}\n{suffix_context}",
+    "fact_template": "The verification code for project {project_id} is {verification_code}.",
+    "question_template": "What is the verification code for project {project_id}?",
+    "answer_template": "{verification_code}"
+  }
+}
