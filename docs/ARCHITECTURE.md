@@ -76,20 +76,17 @@ an isolated subprocess; AWQ loads AutoAWQ on instantiation; EXL2 runs the
 official converter and loads ExLlamaV2 only for inference; vLLM passes a
 concrete tensor-parallel degree and obtains exact token counts from `/tokenize`.
 
-`cluster/` will contain the API gateway, node health logic, mTLS support, and
-Ray, SLURM, and Kubernetes adapters. It currently contains only its package
-marker.
+`cluster/` contains the authenticated local FastAPI/SSE gateway. Node health,
+mTLS, Ray, SLURM, and Kubernetes adapters arrive in the optional cluster phase.
 
-`cli/` will serialize CLI input into job envelopes and stream orchestrator
-events. It must not call execution engines directly. It currently contains only
-its package marker.
+`cli/` serializes terminal input into authenticated job envelopes and streams
+Orchestrator events with rich progress. It never calls execution engines.
 
-`ui/` will provide the desktop interface and communicate only through the
-orchestrator contract. It currently contains only its package marker.
+`ui/` provides a tkinter desktop interface. It runs the Orchestrator stream on
+a dedicated worker thread and drains events on the GUI main loop.
 
-`notebooks/` will provide Kaggle and Colab adapters that serialize requests and
-display progress without importing execution tiers directly. It currently
-contains only its package marker.
+`notebooks/` provides Kaggle and Colab adapters with notebook-secret lookup,
+nested event-loop support, and streaming progress display.
 
 `telemetry/` separates persistent SQLite job metadata from the Redis telemetry
 hot path. In the primary Enterprise Fat Binary deployment, Redis is a bundled

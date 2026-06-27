@@ -7,6 +7,10 @@ redis
 sqlalchemy
 psycopg2-binary
 prometheus-client
+rich
+httpx
+nest-asyncio
+tqdm
 PyJWT
 cryptography
 torch==2.3.1

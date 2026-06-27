@@ -414,3 +414,46 @@ None.
 ### Questions asked and answers
 
 None.
+## 2026-06-27 — Phase 9: Interface Shells
+
+### Tasks completed
+
+- 9.1 Added CLI `run`, `status`, and reserved `purge` commands using the Orchestrator contract.
+- 9.2 Added an authenticated local FastAPI gateway with SSE submission and polling status.
+- 9.3 Added a tkinter GUI with model/mode inputs, live state/telemetry, and a non-blocking worker thread.
+- 9.4 Added a Kaggle/Colab adapter with secret loading, nested-loop support, progress, and displayable results.
+
+### Files created or modified
+
+- `cli/main.py` — authenticated terminal serializer and progress consumer.
+- `cluster/api_server.py` — authentication middleware, SSE endpoint, and job status.
+- `ui/app.py` — desktop interface with isolated async execution.
+- `notebooks/adapter.py` — notebook detection, secrets, streaming, and result object.
+- `tests/test_interfaces.py` — envelope, authentication, SSE, isolation, and notebook tests.
+- `requirements.txt` — explicit interface runtime dependencies.
+- `README.md`, `docs/ARCHITECTURE.md`, and `docs/BUILD_LOG.md` — interface operating record.
+
+### Verification commands and actual results
+
+- CLI help exposed `run`, `status`, and `purge`; a test key produced a strict authenticated CLI envelope.
+- Missing API credentials returned HTTP 401 JSON before envelope processing.
+- A valid simulated job returned an SSE `complete` event.
+- GUI and notebook builders produced `gui`/JWT and `kaggle`/API-key envelopes respectively.
+- AST inspection found no `engines` import in any interface module.
+- A simulated notebook async stream completed and returned a displayable result.
+- `python -m pytest tests -q` returned `21 passed`.
+
+### Deviations from the roadmap
+
+- The purge command is present but deliberately refuses execution until the five-phase purge controller is implemented in Phase 12.
+- The local FastAPI app is transport-protocol agnostic; HTTP/2 and TLS termination are packaging/deployment configuration.
+
+### Needs manual verification
+
+- Launch the tkinter window on a graphical Windows session and observe a live job without UI freezing.
+- Run the adapter in hosted Kaggle and Colab runtimes with notebook secrets.
+- Verify TLS-terminated HTTP/2 only for optional team/server API deployment.
+
+### Questions asked and answers
+
+- The user clarified that the Enterprise Fat Binary is the primary deployment and supplied the exact §1.2 contract rules. Phase 9 uses those corrected contracts.

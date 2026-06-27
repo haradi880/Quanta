@@ -125,3 +125,19 @@ from a running asyncio event loop. Durable aggregate export is disabled by
 default. Team/server deployments may explicitly set
 `HARADIBOTS_TELEMETRY_SINK=prometheus` or `postgresql`; PostgreSQL additionally
 requires `POSTGRES_URL`.
+
+## Interfaces
+
+All interfaces construct the same authenticated version 3.0 `JobEnvelope` and
+consume the same `ProgressEvent` stream:
+
+```powershell
+$env:HARADIBOTS_API_KEY = "<your local key>"
+python -m cli.main run --model owner/model --mode auto
+uvicorn cluster.api_server:app --host 127.0.0.1 --port 8000
+python -m ui.app
+```
+
+Notebook users call `notebooks.adapter.run("owner/model")`. The desktop GUI
+reads its session JWT from `HARADIBOTS_SESSION_JWT` or
+`$HARADIBOTS_CACHE_ROOT/session.jwt`. No interface imports an execution engine.
