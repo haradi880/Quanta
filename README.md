@@ -53,3 +53,14 @@ python -c "from core.profiler import snapshot; print(snapshot())"
 On systems without an NVIDIA device or working NVML driver, the profiler
 returns an empty GPU list and a complete CPU fallback profile. Strategy
 selection reads `config/decision_matrix.json`.
+
+## Hugging Face metadata inspection
+
+Inspect repository metadata asynchronously without downloading model weights:
+
+```powershell
+python -c "import asyncio; from core.hf_inspector import inspect_repo; print(asyncio.run(inspect_repo('NousResearch/Meta-Llama-3-8B')))"
+```
+
+Set `HF_TOKEN` only when inspecting files in a gated or private repository for
+which your Hugging Face account already has access. Do not commit the token.

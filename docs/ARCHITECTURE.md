@@ -22,6 +22,7 @@
 |-- core/
 |   |-- __init__.py
 |   |-- auth_middleware.py
+|   |-- hf_inspector.py
 |   |-- profiler.py
 |   `-- schemas.py
 |-- docs/
@@ -48,11 +49,14 @@ Local metadata and generated directories such as `.git`, `.venv`, `.pytest_cache
 
 ## Module responsibilities
 
-`core/` contains the strict v3.0 wire schemas, authentication boundary, and
-hardware profiler. The profiler gathers NVIDIA telemetry when NVML is
-available, otherwise produces a topology-aware CPU profile; it also owns the
-thread plan, three memory formulae, and hardware decision-matrix lookup.
-Model inspection, orchestration, and prompt control follow in later phases.
+`core/` contains the strict v3.0 wire schemas, authentication boundary,
+hardware profiler, and asynchronous Hugging Face inspector. The profiler
+gathers NVIDIA telemetry when NVML is available, otherwise produces a
+topology-aware CPU profile; it also owns the thread plan, three memory
+formulae, and hardware decision-matrix lookup. The inspector uses only Hub
+metadata and small JSON configuration files to inventory files, classify
+attention, detect prior quantization, and identify model family before any
+weight download. Orchestration and prompt control follow in later phases.
 Authentication supports hashed API keys and signed JWTs and stores the
 verified identity in a request-scoped context variable.
 
@@ -110,7 +114,8 @@ undeclared fields.
 - `ErrorEnvelope` and `TeardownComplete` define structured failure and process
   harvesting results.
 - `ModelMetaProfile` defines Hugging Face inspection output, including GQA
-  metadata and pre-quantization detection.
+  metadata and pre-quantization detection. `core/hf_inspector.py:inspect_repo`
+  now produces and validates this contract.
 - `ValidationResult` and its nested result models define per-domain,
   composite, severity, quarantine, confirmation, and golden-prompt results.
 
@@ -122,6 +127,9 @@ undeclared fields.
   ignored, and runtime interface wiring for it is scheduled for a later phase.
 - API-key validation reads hashed records from ignored
   `config/credentials.json`.
+- `HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN` is optional and used only to inspect
+  files in a gated/private Hugging Face repository for which the caller has
+  access.
 
 ## Known limitations
 
@@ -136,6 +144,8 @@ undeclared fields.
   environment.
 - Hybrid P/E-core classification has synthetic coverage but has not been
   exercised on a real hybrid CPU here.
+- Full config inspection of Meta's original gated Llama repositories has not
+  been verified with an authorized account token.
 
 ## How to run this so far
 
@@ -171,4 +181,10 @@ Evaluate a 4 GiB GPU and 7B model against the matrix:
 
 ```powershell
 python -c "from core.profiler import select_strategy; print(select_strategy({'gpu_count': 1, 'gpus': [{'vram_free_bytes': 4 * 1024**3}]}, {'model_size_b': 7, 'num_layers': 32}))"
+```
+
+Inspect a model repository without downloading weights:
+
+```powershell
+python -c "import asyncio; from core.hf_inspector import inspect_repo; print(asyncio.run(inspect_repo('NousResearch/Meta-Llama-3-8B')))"
 ```

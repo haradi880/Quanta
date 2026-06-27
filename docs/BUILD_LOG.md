@@ -156,3 +156,48 @@ None for Phase 2. The user ran the required secret generator, and all checks wer
 ### Questions asked and answers
 
 None.
+
+## 2026-06-27 — Phase 4: HuggingFace Inspector
+
+### Tasks completed
+
+- 4.1 Implemented asynchronous repository existence, gated-state, access, and storage-size inspection.
+- 4.2 Implemented the `.safetensors`, `.bin`, `.gguf`, and `.json` manifest plus shard-count detection.
+- 4.3 Implemented config normalization, MHA/GQA/MQA classification, and KV-head ratio calculation.
+- 4.4 Implemented tokenizer-template classification, model-family mapping, and config/filename quantization detection.
+- 4.5 Made strict `ModelMetaProfile` validation the return boundary and added warnings for missing model fields.
+
+### Files created or modified
+
+- `core/hf_inspector.py` — metadata-only asynchronous Hugging Face inspector.
+- `README.md` — inspector usage and gated-token guidance.
+- `docs/BUILD_LOG.md` — verified Phase 4 build record.
+- `docs/ARCHITECTURE.md` — current structure, inspector responsibility, contracts, variables, limitations, and run instructions.
+
+### Verification commands and actual results
+
+- Live inspection of `meta-llama/Llama-2-7b-hf` returned `repo_exists=True`, `is_gated=True`, and `repo_size_bytes=53909360564`.
+- Its filtered manifest contained 11 positive-size files and detected two SafeTensor shards.
+- Live inspection of `NousResearch/Meta-Llama-3-8B` returned 32 attention heads, 8 KV heads, `attention_type='gqa'`, and `kv_head_ratio=0.25`.
+- Live inspection of `TheBloke/Mistral-7B-Instruct-v0.2-AWQ` returned `is_prequantized=True`, `quant_format='awq'`, `model_family='mistral'`, and `chat_template_type='mistral'`.
+- Both accessible Llama and Mistral outputs validated through `ModelMetaProfile`.
+- Live inspection of `openai-community/gpt2`, whose config omits `num_key_value_heads`, returned `attention_type='mha'` with `upper_bound_only=True` and validated through `ModelMetaProfile`.
+- The gated Meta Llama 2 metadata remained usable while inaccessible `config.json` and `tokenizer_config.json` emitted clear warnings and missing fields emitted field-specific warnings.
+- `.\.venv\Scripts\python.exe -m compileall -q core` exited successfully.
+- `.\.venv\Scripts\python.exe -m pytest tests/test_import_isolation.py -q` returned `1 passed in 0.02s`.
+- `.\.venv\Scripts\python.exe -m pip check` returned `No broken requirements found.`
+- `git diff --check` exited successfully.
+
+### Deviations from the roadmap
+
+- Meta's gated Llama 3 config requires an account with accepted access. The exact GQA check used the accessible `NousResearch/Meta-Llama-3-8B` mirror rather than requesting or exposing a user token.
+- `tokenizer_config.json` in that mirror does not declare a chat template, so `chat_template_type` correctly remains null; no template was inferred from model family alone.
+- Missing gated configuration is logged and represented conservatively instead of turning an otherwise valid repository-existence result into a crash.
+
+### Needs manual verification
+
+- With an account authorized for Meta Llama repositories, set `HF_TOKEN` privately and run `inspect_repo('meta-llama/Meta-Llama-3-8B')` to verify full config and tokenizer metadata on the original gated repository.
+
+### Questions asked and answers
+
+None.
