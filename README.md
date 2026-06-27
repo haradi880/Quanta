@@ -111,8 +111,8 @@ Poor results require confirmation; critical results are quarantined.
 ## Telemetry
 
 Job metadata is stored under
-`$HARADIBOTS_CACHE_ROOT/db/haradibots.sqlite3`. High-frequency metrics use
-Redis at `$REDIS_URL` and are aggregated to Prometheus every 10 seconds:
+`$HARADIBOTS_CACHE_ROOT/db/haradibots.sqlite3`. High-frequency metrics use the
+local Redis process bundled with the Enterprise Fat Binary:
 
 ```python
 from telemetry.redis_pipeline import write_tick
@@ -121,4 +121,7 @@ write_tick("job-id", "node-id", {"vram_pct": 72, "gpu_temp_c": 65})
 ```
 
 `write_tick()` schedules Redis work and returns immediately. It must be called
-from a running asyncio event loop.
+from a running asyncio event loop. Durable aggregate export is disabled by
+default. Team/server deployments may explicitly set
+`HARADIBOTS_TELEMETRY_SINK=prometheus` or `postgresql`; PostgreSQL additionally
+requires `POSTGRES_URL`.

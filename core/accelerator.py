@@ -451,9 +451,7 @@ def run_validation_suite(
     for domain, texts in domain_texts.items():
         original_perplexity = _mean_perplexity(original_model, texts)
         quantized_perplexity = _mean_perplexity(quantized_model, texts)
-        delta = (
-            quantized_perplexity - original_perplexity
-        ) / original_perplexity
+        delta = quantized_perplexity - original_perplexity
         per_domain[domain] = DomainValidationResult(
             original_perplexity=original_perplexity,
             quantized_perplexity=quantized_perplexity,
@@ -481,7 +479,7 @@ def run_validation_suite(
         )
         original_ppl = _mean_perplexity(original_model, [scoring_text])
         quantized_ppl = _mean_perplexity(quantized_model, [scoring_text])
-        golden_delta = (quantized_ppl - original_ppl) / original_ppl
+        golden_delta = quantized_ppl - original_ppl
         golden_results.append(
             GoldenValidationResult(
                 prompt=prompt,

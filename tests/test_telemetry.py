@@ -5,7 +5,7 @@ from pathlib import Path
 
 from sqlalchemy import inspect
 
-from telemetry.aggregator import TelemetryAggregator
+from telemetry.aggregator import TelemetryAggregator, configured_sink
 from telemetry.db import create_database, get_job, insert_job
 from telemetry.redis_pipeline import write_tick
 from telemetry.warnings import evaluate_tick
@@ -84,6 +84,12 @@ def test_slow_aggregator_sink_does_not_block_hot_path():
         assert redis.writes
 
     asyncio.run(scenario())
+
+
+def test_standalone_aggregator_has_no_durable_sink_by_default(monkeypatch):
+    monkeypatch.delenv("HARADIBOTS_TELEMETRY_SINK", raising=False)
+
+    assert configured_sink() is None
 
 
 def test_threshold_file_contains_five_complete_metrics():

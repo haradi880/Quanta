@@ -92,10 +92,13 @@ display progress without importing execution tiers directly. It currently
 contains only its package marker.
 
 `telemetry/` separates persistent SQLite job metadata from the Redis telemetry
-hot path. Redis writes are scheduled without awaiting network I/O; an
-independent 10-second aggregator exports batches to Prometheus or an injected
-PostgreSQL sink. Threshold policies are loaded once and evaluated in memory on
-every tick. SQLite never stores high-frequency telemetry.
+hot path. In the primary Enterprise Fat Binary deployment, Redis is a bundled
+local background process, not a cloud dependency. Redis writes are scheduled
+without awaiting network I/O. The independent 10-second aggregator has durable
+export disabled by default for v1; Prometheus or PostgreSQL can be explicitly
+enabled for team/server deployments. Threshold policies are loaded once and
+evaluated in memory on every tick. SQLite remains local-only job metadata and
+never stores high-frequency telemetry ticks.
 
 `config/` holds validated runtime policies, including the validation suite and
 five-metric telemetry threshold table.
@@ -137,10 +140,19 @@ undeclared fields.
 
 Phase 7 validation is implemented in `core/accelerator.py`. It uses causal
 perplexity `exp(-mean(log p(x_i)))`, with `N-1` predicted tokens for a sequence
-of length `N`. The default composite weights are logic `0.30`, retrieval
+of length `N`. Domain deltas are the absolute difference
+`PPL_quantized - PPL_original`. The default composite weights are logic `0.30`, retrieval
 `0.35`, and code `0.35`. Severity boundaries are excellent through `0.05`,
 good through `0.15`, moderate through `0.35`, poor through `0.60`, and critical
 above `0.60`. Poor requires confirmation and critical is quarantined.
+
+## Distribution mode
+
+The primary distribution is a single-machine Enterprise Fat Binary / executable
+download. Python dependencies and the local Redis process are bundled at build
+time. PostgreSQL, Ray, SLURM, Kubernetes, and remote Prometheus are optional
+team/server capabilities and are never prerequisites for standalone operation
+or local Done When checks.
 
 ## Environment variables
 

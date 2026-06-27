@@ -16,6 +16,7 @@ from core.schemas import ModelMetaProfile
 HF_ENDPOINT = "https://huggingface.co"
 REQUEST_TIMEOUT_SECONDS = 30
 INVENTORY_SUFFIXES = (".safetensors", ".bin", ".gguf", ".json")
+WEIGHT_SUFFIXES = (".safetensors", ".bin", ".gguf")
 SHARD_PATTERN = re.compile(r"-(\d+)-of-(\d+)\.[^.]+$", re.IGNORECASE)
 LOGGER = logging.getLogger(__name__)
 
@@ -193,6 +194,20 @@ def _detect_quantization(
     return False, None
 
 
+def _quant_bits(config: dict[str, Any], quant_format: str | None) -> float | None:
+    quantization = config.get("quantization_config")
+    if isinstance(quantization, dict):
+        for field in ("bits", "w_bit", "bit_width"):
+            value = quantization.get(field)
+            if isinstance(value, (int, float)) and value > 0:
+                return float(value)
+    if quant_format:
+        match = re.search(r"(\d+(?:\.\d+)?)", quant_format)
+        if match:
+            return float(match.group(1))
+    return None
+
+
 def _validated_profile(
     repo_id: str,
     values: dict[str, Any],
@@ -257,7 +272,8 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
             "repo_size_bytes": 0,
             "parameter_count": None,
             "file_manifest": {},
-            "shard_count": 0,
+            "num_shards": 0,
+            "total_weight_bytes": 0,
             "num_layers": None,
             "hidden_size": None,
             "num_attention_heads": None,
@@ -270,6 +286,7 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
             "chat_template_type": None,
             "is_prequantized": False,
             "quant_format": None,
+            "quant_bits": None,
             "model_family": None,
         })
 
@@ -293,7 +310,7 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
         parameter_count = None
 
     file_manifest: dict[str, int] = {}
-    shard_count = 0
+    num_shards = 0
     for file_info in siblings:
         if not isinstance(file_info, dict):
             continue
@@ -309,7 +326,7 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
         file_manifest[filename] = max(int(size), 0)
         shard_match = SHARD_PATTERN.search(filename)
         if shard_match:
-            shard_count = max(shard_count, int(shard_match.group(2)))
+            num_shards = max(num_shards, int(shard_match.group(2)))
 
     config = config or {}
     tokenizer_config = tokenizer_config or {}
@@ -356,6 +373,11 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
         config,
         list(file_manifest),
     )
+    total_weight_bytes = sum(
+        size
+        for filename, size in file_manifest.items()
+        if filename.lower().endswith(WEIGHT_SUFFIXES)
+    )
 
     return _validated_profile(repo_id, {
         "repo_exists": True,
@@ -363,7 +385,8 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
         "repo_size_bytes": int(repo_size),
         "parameter_count": parameter_count,
         "file_manifest": file_manifest,
-        "shard_count": shard_count,
+        "num_shards": num_shards,
+        "total_weight_bytes": total_weight_bytes,
         "num_layers": num_layers,
         "hidden_size": hidden_size,
         "num_attention_heads": num_attention_heads,
@@ -384,5 +407,6 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
         ),
         "is_prequantized": is_prequantized,
         "quant_format": quant_format,
+        "quant_bits": _quant_bits(config, quant_format),
         "model_family": model_family,
     })

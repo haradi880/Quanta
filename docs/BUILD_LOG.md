@@ -370,7 +370,7 @@ None.
 
 - 8.1 Added SQLAlchemy SQLite tables for jobs and validation summaries only.
 - 8.2 Added shared-pool, fire-and-forget Redis hash writes.
-- 8.3 Added an independent 10-second Redis aggregator with Prometheus output and injectable sinks.
+- 8.3 Added an independent 10-second Redis aggregator with disabled, Prometheus, and PostgreSQL sink modes.
 - 8.4 Added all five architecture metrics with warning, critical, and emergency policies.
 - 8.5 Added a no-I/O, per-tick warning evaluator.
 
@@ -396,12 +396,20 @@ None.
 ### Deviations from the roadmap
 
 - CPU emergency is explicitly disabled because Architecture §4.4 defines it as N/A; the emergency level remains present to satisfy the uniform policy schema.
-- Prometheus is the default aggregate sink. A PostgreSQL writer can be injected without changing or blocking the Redis write path.
+- Following the distribution clarification, durable aggregate export is disabled by default. Prometheus and PostgreSQL are explicit team/server modes.
+- Redis is a bundled local background process for the Enterprise Fat Binary, not a remote service dependency.
 
 ### Needs manual verification
 
-- Run against deployed Redis and scrape the Prometheus gauges.
-- Exercise a production PostgreSQL sink under real latency and failure conditions.
+- Exercise a production PostgreSQL sink under real server latency and failure conditions.
+
+### Post-phase contract correction
+
+- Re-audited Task 2.1 against the exact §1.2 tables and made `auth` a required `AuthBlock`.
+- Added the specified top-level `gpu_uuids` field to `HardwareProfile`.
+- Corrected `ModelMetaProfile` to expose `num_shards`, `total_weight_bytes`, and `quant_bits`.
+- Corrected validation deltas to `PPL_quantized - PPL_original` rather than a relative ratio.
+- Added exact field-name, required-auth, payload-profile, absolute-delta, and standalone-sink regression tests.
 
 ### Questions asked and answers
 

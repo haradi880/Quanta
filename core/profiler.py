@@ -563,6 +563,7 @@ def snapshot() -> dict[str, Any]:
         profile_id=uuid4(),
         timestamp_utc=datetime.now(timezone.utc),
         gpu_count=len(gpu_profiles),
+        gpu_uuids=[gpu["uuid"] for gpu in gpu_profiles],
         gpus=gpu_profiles,
         cpu=cpu_profile,
     )

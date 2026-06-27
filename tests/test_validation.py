@@ -19,6 +19,14 @@ class UniformModel:
         return [-math.log(10.0)] * (len(tokens) - 1)
 
 
+class FixedPerplexityModel(UniformModel):
+    def __init__(self, perplexity):
+        self.perplexity = perplexity
+
+    def log_probabilities(self, tokens):
+        return [-math.log(self.perplexity)] * (len(tokens) - 1)
+
+
 def test_perplexity_uses_causal_prediction_count():
     class TotalLikelihoodModel:
         def log_likelihood(self, tokens):
@@ -37,6 +45,16 @@ def test_identical_models_have_zero_validation_delta():
     assert result.composite_delta == pytest.approx(0)
     assert result.severity_tier == "excellent"
     assert result.golden_results[0].passed is True
+
+
+def test_validation_uses_absolute_not_relative_perplexity_delta():
+    result = run_validation_suite(
+        FixedPerplexityModel(10),
+        FixedPerplexityModel(10.5),
+    )
+
+    assert result.composite_delta == pytest.approx(0.5)
+    assert result.severity_tier == "poor"
 
 
 def test_poor_severity_requires_confirmation():

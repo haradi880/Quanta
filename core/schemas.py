@@ -120,7 +120,7 @@ class JobEnvelope(StrictModel):
 
     schema_version: str = SCHEMA_VERSION
     job_id: UUID
-    auth: AuthBlock | None = None
+    auth: AuthBlock
     interface: InterfaceType
     mode: JobMode
     model_source: ModelSource
@@ -174,8 +174,17 @@ class HardwareProfile(StrictModel):
     profile_id: UUID
     timestamp_utc: datetime
     gpu_count: int = Field(ge=0)
+    gpu_uuids: list[str] = Field(default_factory=list)
     gpus: list[GPUProfile] = Field(default_factory=list)
     cpu: CPUProfile
+
+    @model_validator(mode="after")
+    def match_gpu_inventory(self) -> HardwareProfile:
+        if self.gpu_count != len(self.gpus):
+            raise ValueError("gpu_count must match the number of GPU profiles")
+        if self.gpu_uuids != [gpu.uuid for gpu in self.gpus]:
+            raise ValueError("gpu_uuids must match GPU profile order")
+        return self
 
 
 class StrategyConfig(StrictModel):
@@ -213,7 +222,8 @@ class ModelMetaProfile(StrictModel):
     repo_size_bytes: int = Field(ge=0)
     parameter_count: int | None = Field(default=None, ge=0)
     file_manifest: dict[str, int]
-    shard_count: int = Field(ge=0)
+    num_shards: int = Field(ge=0)
+    total_weight_bytes: int = Field(ge=0)
     num_layers: int | None = Field(default=None, ge=0)
     hidden_size: int | None = Field(default=None, ge=0)
     num_attention_heads: int | None = Field(default=None, ge=0)
@@ -226,6 +236,7 @@ class ModelMetaProfile(StrictModel):
     chat_template_type: str | None = None
     is_prequantized: bool = False
     quant_format: str | None = None
+    quant_bits: float | None = Field(default=None, gt=0)
     model_family: str | None = None
 
 
