@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+pydantic
+aiohttp
+redis
+sqlalchemy
+psycopg2-binary
+prometheus-client
+PyJWT
+cryptography
+torch
+transformers
+huggingface_hub
+auto-gptq
+autoawq
+pytest
