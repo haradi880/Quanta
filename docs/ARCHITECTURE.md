@@ -20,7 +20,9 @@
 |   |-- telemetry_thresholds.json
 |   `-- validation_suite.json
 |-- core/
-|   `-- __init__.py
+|   |-- __init__.py
+|   |-- auth_middleware.py
+|   `-- schemas.py
 |-- docs/
 |   |-- __init__.py
 |   |-- ARCHITECTURE.md
@@ -29,6 +31,8 @@
 |   `-- __init__.py
 |-- notebooks/
 |   `-- __init__.py
+|-- scripts/
+|   `-- gen_credentials.py
 |-- telemetry/
 |   `-- __init__.py
 |-- tests/
@@ -43,9 +47,11 @@ Local metadata and generated directories such as `.git`, `.venv`, `.pytest_cache
 
 ## Module responsibilities
 
-`core/` will contain shared schemas, authentication, hardware and model
-inspection, strategy planning, orchestration, and prompt control. It currently
-contains only its package marker.
+`core/` contains the strict v3.0 wire schemas and authentication boundary. It
+will also contain hardware and model inspection, strategy planning,
+orchestration, and prompt control in later phases. Authentication supports
+hashed API keys and signed JWTs and stores the verified identity in a
+request-scoped context variable.
 
 `engines/` will contain the execution worker abstraction and the GGUF, AWQ,
 EXL2, and vLLM workers. It currently contains only its package marker.
@@ -83,25 +89,45 @@ reference.
 
 ## Data contracts and schemas
 
-No runtime data contracts are defined in Phase 1. `JobEnvelope`,
-`ProgressEvent`, `AuthBlock`, `HardwareProfile`, `StrategyConfig`,
-`ErrorEnvelope`, `TeardownComplete`, and model metadata contracts are scheduled
-for Phase 2.
+All contracts live in `core/schemas.py`, use Pydantic v2 strict mode, and reject
+undeclared fields.
+
+- `JobEnvelope` is the inbound v3.0 contract. It carries `schema_version`,
+  `job_id`, `auth`, `interface`, `mode`, `model_source`, optional hardware,
+  quantization and cluster overrides, optional validation prompts,
+  `system_prompt`, the deprecated display refresh hint, and callback channels.
+- `AuthBlock` permits exactly one of an API key or JWT.
+- `ProgressEvent` is the outbound stream contract with the v3.0 event type
+  vocabulary, UTC timestamp, event payload, and latest telemetry snapshot.
+- `HardwareProfile`, `GPUProfile`, and `CPUProfile` describe the hardware
+  inventory consumed by planning.
+- `StrategyConfig` carries format, GPU layers, backend, parallelism degrees,
+  and any safety warning.
+- `ErrorEnvelope` and `TeardownComplete` define structured failure and process
+  harvesting results.
+- `ModelMetaProfile` defines Hugging Face inspection output, including GQA
+  metadata and pre-quantization detection.
+- `ValidationResult` and its nested result models define per-domain,
+  composite, severity, quarantine, confirmation, and golden-prompt results.
 
 ## Environment variables
 
-No environment variables are required by the Phase 1 code. Later phases will
-introduce authentication, cache, telemetry, database, and llama.cpp binary
-variables.
+- `HARADIBOTS_JWT_SECRET` is required when validating JWT credentials. It must
+  be a private, randomly generated signing secret and must not be committed.
+- `.env` currently stores `DEV_API_KEY` for local development only. The file is
+  ignored, and runtime interface wiring for it is scheduled for a later phase.
+- API-key validation reads hashed records from ignored
+  `config/credentials.json`.
 
 ## Known limitations
 
 - The configuration files are empty skeletons.
 - The import-isolation test is intentionally a placeholder until Phase 14.
-- No schemas, authentication, profiler, model inspector, orchestrator, workers,
-  interfaces, telemetry pipeline, cluster implementation, or packaging logic
-  exists yet.
+- No profiler, model inspector, orchestrator, workers, interfaces, telemetry
+  pipeline, cluster implementation, or packaging logic exists yet.
 - The installed Torch build is CPU-only and reports CUDA unavailable.
+- JWT validation currently uses one environment-provided HS256 signing key;
+  rotating key-set support is not yet implemented.
 
 ## How to run this so far
 
@@ -112,4 +138,17 @@ From the repository root on Windows:
 python -c "import fastapi, redis, jwt"
 python -c "import torch; print(torch.cuda.is_available())"
 python -m pytest tests/test_import_isolation.py
+```
+
+Generate a development credential once:
+
+```powershell
+python scripts\gen_credentials.py
+```
+
+The generator refuses to overwrite an existing `DEV_API_KEY`. Import the Phase
+2 contracts and authentication gate with:
+
+```powershell
+python -c "from core.schemas import JobEnvelope; from core.auth_middleware import authenticate"
 ```

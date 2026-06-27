@@ -60,3 +60,50 @@ None for Phase 1. The user explicitly selected a CPU-compatible installation, an
 
 - Asked for authorization to use shell/Git and initialize `G:\HB QUANTRA`; the user authorized it.
 - Asked whether to install CPU-compatible ML dependencies after `nvidia-smi` was unavailable; the user replied, “Install CPU-compatible ML dependencies.”
+
+## 2026-06-27 — Phase 2: Core Schemas & Authentication
+
+### Tasks completed
+
+- 2.1 Defined strict Pydantic v2 models for the v3.0 inbound, outbound, hardware, strategy, error, teardown, model metadata, and validation contracts.
+- 2.2 Implemented the SHA-256 API-key credential store loader and validator.
+- 2.3 Implemented HS256 JWT validation with required signature, expiry, audience, and subject checks.
+- 2.4 Implemented the schema-versioned authentication gate, request-scoped verified identity, and structured 401 errors.
+- 2.5 Added the development credential generator and verified the user-generated key against its stored hash.
+
+### Files created or modified
+
+- `core/schemas.py` — strict, extra-forbidden Pydantic v2 contract models.
+- `core/auth_middleware.py` — API-key and JWT validators plus the main authentication gate.
+- `scripts/gen_credentials.py` — local API-key generator that never prints the plaintext.
+- `README.md` — local authentication setup and secret-handling instructions.
+- `docs/BUILD_LOG.md` — verified Phase 2 build record.
+- `docs/ARCHITECTURE.md` — current structure, contracts, authentication flow, variables, and run instructions.
+- `.env` — ignored local plaintext development key, created by the user.
+- `config/credentials.json` — ignored local SHA-256 credential store, created by the user.
+
+### Verification commands and actual results
+
+- `.\.venv\Scripts\python.exe -c "from core.schemas import JobEnvelope"` imported successfully and printed `JobEnvelope`.
+- An inline API-key check authenticated the generated valid key as `local-development`; `definitely-invalid` raised `AuthError`.
+- An inline JWT check returned `verified-user` for a valid signed token; an expired token raised `AuthError`.
+- An inline `authenticate()` check on an envelope with `auth=None` returned `ErrorEnvelope 401 authentication_failed`.
+- A redacted generator audit confirmed `.env` contains `DEV_API_KEY`, the corresponding SHA-256 is present in `credentials.json`, no plaintext key field exists in the store, and authentication passes.
+- `.\.venv\Scripts\python.exe -m pytest tests/test_import_isolation.py -q` returned `1 passed in 0.03s`.
+- `.\.venv\Scripts\python.exe -m pip check` returned `No broken requirements found.`
+- `git diff --check` exited successfully.
+
+### Deviations from the roadmap
+
+- The build-task DOCX references Architecture Spec §1.2 without reproducing its fields. Work paused until the user supplied `HaradiBots_Architecture_v3.0.docx`; its §1.2 table then became the authority for the exact top-level wire fields.
+- §1.2 specifies the exact `JobEnvelope` and `ProgressEvent` fields but describes several nested payloads semantically. Their typed fields were derived from those descriptions and the later hardware, strategy, teardown, model-inspection, and validation sections of the same v3.0 architecture document.
+- `JobEnvelope.auth` is represented as nullable at model-construction time so the required Task 2.4 missing-auth request can reach `authenticate()` and receive a structured 401. The authentication gate still rejects it before orchestration.
+
+### Needs manual verification
+
+None for Phase 2. The user ran the required secret generator, and all checks were executable locally without exposing secret values.
+
+### Questions asked and answers
+
+- Asked for Architecture Spec §1.2 because the build-task document omitted the binding field table; the user supplied `HaradiBots_Architecture_v3.0.docx`.
+- Asked the user to run `scripts/gen_credentials.py` so the assistant would not generate or expose the plaintext secret; the user ran it and supplied the non-secret success message.

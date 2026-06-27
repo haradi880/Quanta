@@ -28,3 +28,16 @@ Run the Phase 1 test with:
 ```powershell
 python -m pytest tests/test_import_isolation.py
 ```
+
+## Local authentication setup
+
+Generate a development API key once:
+
+```powershell
+python scripts\gen_credentials.py
+```
+
+The command writes the plaintext key only to the ignored `.env` file and its
+SHA-256 hash only to the ignored `config/credentials.json` store. It does not
+print the key. To exercise JWT authentication, set a secret of at least 32
+random bytes in `HARADIBOTS_JWT_SECRET`; do not commit it.
