@@ -107,3 +107,18 @@ python -c "from core.accelerator import get_severity_tier; print(get_severity_ti
 
 Golden prompts are scored separately and do not affect the weighted composite.
 Poor results require confirmation; critical results are quarantined.
+
+## Telemetry
+
+Job metadata is stored under
+`$HARADIBOTS_CACHE_ROOT/db/haradibots.sqlite3`. High-frequency metrics use
+Redis at `$REDIS_URL` and are aggregated to Prometheus every 10 seconds:
+
+```python
+from telemetry.redis_pipeline import write_tick
+
+write_tick("job-id", "node-id", {"vram_pct": 72, "gpu_temp_c": 65})
+```
+
+`write_tick()` schedules Redis work and returns immediately. It must be called
+from a running asyncio event loop.

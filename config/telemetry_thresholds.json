@@ -1,1 +1,35 @@
-{}
+{
+  "schema_version": "3.0",
+  "metrics": {
+    "vram_pct": {
+      "comparison": "gt",
+      "warning": {"threshold": 85, "system_action": "log"},
+      "critical": {"threshold": 92, "system_action": "pause_job"},
+      "emergency": {"threshold": 97, "system_action": "abort"}
+    },
+    "cpu_pct": {
+      "comparison": "gt",
+      "warning": {"threshold": 85, "duration_seconds": 30, "system_action": "log"},
+      "critical": {"threshold": 95, "duration_seconds": 10, "system_action": "notify_user"},
+      "emergency": {"threshold": null, "enabled": false, "system_action": "none"}
+    },
+    "gpu_temp_c": {
+      "comparison": "gt",
+      "warning": {"threshold": 80, "system_action": "log"},
+      "critical": {"threshold": 88, "system_action": "throttle_job"},
+      "emergency": {"threshold": 95, "system_action": "abort_and_notify"}
+    },
+    "ram_pct": {
+      "comparison": "gt",
+      "warning": {"threshold": 80, "system_action": "log"},
+      "critical": {"threshold": 90, "system_action": "reduce_batch_size"},
+      "emergency": {"threshold": 97, "system_action": "abort"}
+    },
+    "storage_write_mbps": {
+      "comparison": "lt",
+      "warning": {"threshold": 100, "media": "hdd", "system_action": "log"},
+      "critical": {"threshold": 30, "media": "ssd", "system_action": "warn_slowdown"},
+      "emergency": {"threshold": 5, "media": "any", "system_action": "pause_download"}
+    }
+  }
+}

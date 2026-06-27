@@ -91,11 +91,14 @@ orchestrator contract. It currently contains only its package marker.
 display progress without importing execution tiers directly. It currently
 contains only its package marker.
 
-`telemetry/` will separate persistent job metadata from the Redis telemetry hot
-path and background aggregation. It currently contains only its package marker.
+`telemetry/` separates persistent SQLite job metadata from the Redis telemetry
+hot path. Redis writes are scheduled without awaiting network I/O; an
+independent 10-second aggregator exports batches to Prometheus or an injected
+PostgreSQL sink. Threshold policies are loaded once and evaluated in memory on
+every tick. SQLite never stores high-frequency telemetry.
 
-`config/` holds JSON configuration read by runtime modules. Its four current
-files are intentionally empty objects and will be populated by later phases.
+`config/` holds validated runtime policies, including the validation suite and
+five-metric telemetry threshold table.
 
 `build/` will contain certificate, packaging, container, and deployment
 artifacts. It currently contains only its package marker.

@@ -364,3 +364,45 @@ None.
 ### Questions asked and answers
 
 - The user conditionally approved the perplexity work after mathematical verification. The implementation was checked against Hugging Face and matched exactly.
+## 2026-06-27 — Phase 8: Telemetry Pipeline
+
+### Tasks completed
+
+- 8.1 Added SQLAlchemy SQLite tables for jobs and validation summaries only.
+- 8.2 Added shared-pool, fire-and-forget Redis hash writes.
+- 8.3 Added an independent 10-second Redis aggregator with Prometheus output and injectable sinks.
+- 8.4 Added all five architecture metrics with warning, critical, and emergency policies.
+- 8.5 Added a no-I/O, per-tick warning evaluator.
+
+### Files created or modified
+
+- `telemetry/db.py` — metadata database and job/validation operations.
+- `telemetry/redis_pipeline.py` — non-blocking telemetry writes.
+- `telemetry/aggregator.py` — independent batch collection and export.
+- `telemetry/warnings.py` — in-memory threshold evaluation.
+- `config/telemetry_thresholds.json` — five-metric warning policy.
+- `tests/test_telemetry.py` — database, latency, decoupling, schema, and alert tests.
+- `README.md`, `docs/ARCHITECTURE.md`, and `docs/BUILD_LOG.md` — operating guidance and architecture record.
+
+### Verification commands and actual results
+
+- SQLite first-run creation produced exactly `jobs` and `validation_results`; insertion and lookup returned the expected job.
+- A Redis write backed by a deliberately 100 ms client returned its task in `0.0563 ms`.
+- The slow-sink regression confirmed Redis writes complete while aggregation remains pending.
+- Threshold JSON contains exactly five metrics and all three levels per metric.
+- `evaluate_tick({"vram_pct": 98})` returned one `emergency` alert with action `abort`.
+- `python -m pytest tests -q` returned `10 passed in 1.61s`.
+
+### Deviations from the roadmap
+
+- CPU emergency is explicitly disabled because Architecture §4.4 defines it as N/A; the emergency level remains present to satisfy the uniform policy schema.
+- Prometheus is the default aggregate sink. A PostgreSQL writer can be injected without changing or blocking the Redis write path.
+
+### Needs manual verification
+
+- Run against deployed Redis and scrape the Prometheus gauges.
+- Exercise a production PostgreSQL sink under real latency and failure conditions.
+
+### Questions asked and answers
+
+None.
