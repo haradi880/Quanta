@@ -79,3 +79,19 @@ async for event in process_job(envelope):
 Authenticated jobs always pass through the `TEARDOWN` state before returning
 to `IDLE`. Execution requires a registered worker; concrete workers are added
 in Phase 6.
+
+## Execution backends
+
+Backend modules are safe to import without loading their ML libraries. The
+selected worker loads its backend only when instantiated.
+
+- GGUF uses only a llama.cpp subprocess. Set `HARADIBOTS_LLAMA_BIN` to the
+  platform-appropriate `llama-cli` or compatible binary.
+- AWQ uses AutoAWQ when the selected strategy requests it.
+- EXL2 uses ExLlamaV2 and its official conversion script. Set
+  `HARADIBOTS_EXL2_CONVERT_SCRIPT` to `convert.py`.
+- vLLM creates `LLM(tensor_parallel_size=...)` and uses the running server's
+  `/tokenize` endpoint for exact token counts.
+
+EXL2 and vLLM require GPU/platform-specific installations and are intentionally
+not installed by the generic CPU setup.

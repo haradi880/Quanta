@@ -209,6 +209,79 @@ None.
 
 - Asked permission to add `parameter_count` to `core/schemas.py` and populate it in `core/hf_inspector.py`, because these files were outside Task 5.3's listed key file. The user replied `approved`.
 
+## 2026-06-27 — Cumulative Audit: Phases 1–5
+
+- Rechecked every named Phase 1 directory and configuration JSON.
+- Rechecked generated API-key authentication, invalid-key rejection, JWT validation, and structured missing-auth failure.
+- Rechecked CPU/GPU fallback profiling, schema validation, thread selection, and all three memory formulae.
+- Rechecked live Llama-3 metadata, exact parameter count, and GQA ratio.
+- Rechecked FSM transition rejection, strategy planning, manual OOM warning, missing-model error path, mandatory teardown, and registry cleanup.
+- `pytest tests -q` returned `1 passed in 0.04s`; `pip check` returned no broken requirements; Git was clean.
+- The cumulative script printed `CUMULATIVE PHASE 1-5 AUDIT: PASS`.
+
+## 2026-06-27 — Phase 6: Execution Backends
+
+### Tasks completed
+
+- 6.1 Implemented the abstract lazy-loading worker contract.
+- 6.2 Implemented GGUF execution solely through a configured llama.cpp subprocess with line-by-line progress parsing.
+- 6.3 Implemented guarded AutoAWQ quantization, inference validation, cleanup, and orchestrator registration.
+- 6.4 Implemented guarded EXL2 conversion through the official conversion script plus ExLlamaV2 inference validation.
+- 6.5 Implemented vLLM tensor-parallel loading, inference validation, and exact native `/tokenize` counting.
+- 6.6 Implemented the Architecture §3.2 over-compilation safety table.
+
+### Files created or modified
+
+- `engines/base_worker.py` — backend-neutral async worker and lifecycle contract.
+- `engines/gguf_worker.py` — llama.cpp subprocess execution and output parsing.
+- `engines/awq_worker.py` — lazy AutoAWQ quantization and validation.
+- `engines/exl2_worker.py` — lazy ExLlamaV2 conversion and validation.
+- `engines/vllm_worker.py` — lazy tensor-parallel vLLM loading and native tokenizer client.
+- `core/accelerator.py` — over-compilation safety guard.
+- `core/orchestrator.py` — approved lazy backend factory, strategy path injection, immediate registry insertion, and worker-error propagation.
+- `requirements.txt` — compatible Torch, Transformers, NumPy, and PEFT pins for AutoAWQ/AutoGPTQ.
+- `README.md` — backend setup, lazy-loading behavior, and required binary/script variables.
+- `docs/BUILD_LOG.md` — cumulative and Phase 6 verification record.
+- `docs/ARCHITECTURE.md` — current backend structure, responsibilities, variables, and limitations.
+
+### Verification commands and actual results
+
+- Importing `BaseWorker` triggered none of Torch, Transformers, AWQ, EXL2, vLLM, or llama.cpp.
+- A controlled real Python subprocess emitted `42% complete`; `GGUFWorker` produced launch, running, and completion events and parsed `progress_pct=42.0`.
+- A missing GGUF binary/model produced one structured error and imported no `llama_cpp` binding.
+- Simulated missing AutoAWQ and ExLlamaV2 imports each produced one structured backend error without a traceback.
+- The orchestrator factory created an AWQ worker and inserted it into the job registry immediately.
+- A fake vLLM class received `tensor_parallel_size=3`.
+- A local HTTP tokenizer server received `{"prompt":"exact","model":"test/model"}` and `VLLMWorker` returned exact count `7`.
+- All Q4-or-lower, AWQ, GPTQ, and EXL2 blocked conversion classes returned `allowed=False` with reasons; FP16→Q4, Q8→Q6, and Q6→Q4 returned `allowed=True`.
+- Importing every worker module in a fresh process loaded no backend library.
+- AutoAWQ and AutoGPTQ imports succeeded after dependency correction; `pip check` returned `No broken requirements found.`
+- In-process worker teardown completed gracefully with zero forced kills.
+- `.\.venv\Scripts\python.exe -m compileall -q core engines` exited successfully.
+- `.\.venv\Scripts\python.exe -m pytest tests -q` returned `1 passed in 0.02s`.
+- `git diff --check` exited successfully.
+- The final AST audit found no backend import at worker-module scope; no Python `llama_cpp` import exists.
+- The final Phase 6 script printed `PHASE 6 FINAL AUDIT: PASS`; controlled GGUF parsing returned `55%`.
+- `pip install -r requirements.txt --dry-run` resolved every requirement without a planned change.
+
+### Deviations from the roadmap
+
+- With explicit user approval, `core/orchestrator.py` was updated even though it is not listed under the Phase 6 key files. This was required to instantiate the selected backend and satisfy immediate worker-registry insertion.
+- The official EXL2 converter is a script, not a stable in-process conversion API. The worker lazily imports ExLlamaV2 for inference but launches configured `convert.py` with its documented `-i`, `-o`, `-cf`, and `-b` arguments.
+- The unconstrained Phase 1 dependency set resolved incompatible releases. It was corrected to Torch 2.3.1, Transformers 4.45.2, NumPy 1.26.4, and PEFT 0.7.1; both AutoAWQ and AutoGPTQ then imported.
+- EXL2 and vLLM were not installed because this CPU Windows environment lacks the platform-specific CUDA build requirements. Their missing-package paths are verified and structured.
+
+### Needs manual verification
+
+- Run GGUF execution with a real compiled llama.cpp binary and local Q4_K_M model.
+- On a compatible NVIDIA system, install the matching AutoAWQ kernels and run a real quantization.
+- Install the matching ExLlamaV2/CUDA build, configure its official `convert.py`, and run conversion plus inference.
+- Install vLLM on a supported GPU host, launch a tensor-parallel model, and compare `count_tokens()` to the live server response.
+
+### Questions asked and answers
+
+- Asked permission to update `core/orchestrator.py` for automatic backend construction and registry insertion. The user replied `approved`.
+
 ## 2026-06-27 — Phase 4: HuggingFace Inspector
 
 ### Tasks completed

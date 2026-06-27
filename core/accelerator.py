@@ -197,3 +197,63 @@ def select_strategy(
         warning_reason=warning_reason,
     )
     return strategy.model_dump(mode="python")
+
+
+def check_overcompilation(
+    source_format: str,
+    target_format: str,
+) -> dict[str, bool | str]:
+    """Apply the Architecture §3.2 quantization conversion safety table."""
+
+    source = source_format.upper().strip()
+    target = target_format.upper().strip()
+    if not source or not target:
+        return {
+            "allowed": False,
+            "reason": "source and target formats are required",
+        }
+
+    if "AWQ" in source:
+        return {
+            "allowed": False,
+            "reason": "AWQ matrices are calibrated, fused, and not safe to requantize",
+        }
+    if "GPTQ" in source:
+        return {
+            "allowed": False,
+            "reason": "GPTQ quantization is not invertible",
+        }
+    if "EXL2" in source:
+        return {
+            "allowed": False,
+            "reason": "EXL2 mixed-precision packing requires original calibration data",
+        }
+
+    source_bits = _bit_width(source)
+    target_bits = _bit_width(target)
+    if source_bits <= 4.0 and target_bits < source_bits:
+        return {
+            "allowed": False,
+            "reason": "Q4_K_M or lower cannot be safely converted to a lower bit width",
+        }
+
+    full_precision = "FP16" in source or "BF16" in source
+    if full_precision and target_bits <= 8.0:
+        return {
+            "allowed": True,
+            "reason": "full-precision weights are a canonical quantization source",
+        }
+    if source_bits == 8.0 and target_bits in {6.0, 5.0, 4.0}:
+        return {
+            "allowed": True,
+            "reason": "Q8 GGUF requantization is permitted with a loss warning",
+        }
+    if source_bits == 6.0 and target_bits == 4.0:
+        return {
+            "allowed": True,
+            "reason": "Q6 to Q4_K_M is permitted with a loss warning",
+        }
+    return {
+        "allowed": False,
+        "reason": "conversion is not present in the approved safety table",
+    }

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import os
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
@@ -112,6 +113,62 @@ class Orchestrator:
         """Return an immutable view of handles currently owned by a job."""
 
         return tuple(self._worker_registry.get(job_id, ()))
+
+    def _create_and_register_worker(
+        self,
+        envelope: JobEnvelope,
+        strategy: dict[str, Any],
+    ) -> Any:
+        """Instantiate only the selected backend and register it immediately."""
+
+        backend = str(strategy["backend"]).lower()
+        target_format = str(strategy["format"]).lower()
+        if "llama.cpp" in backend:
+            from engines.gguf_worker import GGUFWorker
+
+            worker: Any = GGUFWorker(envelope.job_id)
+        elif "autoawq" in backend:
+            from engines.awq_worker import AWQWorker
+
+            worker = AWQWorker(envelope.job_id)
+        elif backend == "vllm/exl2" and "awq" not in target_format:
+            from engines.exl2_worker import EXL2Worker
+
+            worker = EXL2Worker(envelope.job_id)
+        elif "vllm" in backend:
+            from engines.vllm_worker import VLLMWorker
+
+            worker = VLLMWorker(envelope.job_id)
+        elif "exl2" in backend:
+            from engines.exl2_worker import EXL2Worker
+
+            worker = EXL2Worker(envelope.job_id)
+        else:
+            raise RuntimeError(f"no worker class is mapped for backend '{backend}'")
+        self.register_worker(envelope.job_id, worker)
+        return worker
+
+    @staticmethod
+    def _execution_strategy(
+        envelope: JobEnvelope,
+        strategy: dict[str, Any],
+    ) -> dict[str, Any]:
+        execution_strategy = dict(strategy)
+        if envelope.model_source.repo_id is not None:
+            execution_strategy["model_source"] = envelope.model_source.repo_id
+        if envelope.model_source.local_path is not None:
+            execution_strategy["model_path"] = envelope.model_source.local_path
+
+        cache_root = Path(
+            os.environ.get(
+                "HARADIBOTS_CACHE_ROOT",
+                str(Path.home() / ".haradibots" / "cache"),
+            )
+        ).expanduser()
+        job_root = cache_root / str(envelope.job_id)
+        execution_strategy.setdefault("work_path", str(job_root / "work"))
+        execution_strategy.setdefault("output_path", str(job_root / "output"))
+        return execution_strategy
 
     @staticmethod
     def _event(
@@ -306,6 +363,10 @@ class Orchestrator:
                 if not isinstance(event, ProgressEvent):
                     raise RuntimeError("worker emitted a non-ProgressEvent value")
                 yield event
+                if event.event_type is EventType.ERROR:
+                    raise RuntimeError(
+                        str(event.payload.get("message", "worker execution failed"))
+                    )
 
     async def _validate_registered_workers(
         self,
@@ -421,19 +482,25 @@ class Orchestrator:
                 raise RuntimeError("cluster dispatch backends arrive in Phase 11")
 
             state = self._transition_job(envelope.job_id, "plan_complete")
+            execution_strategy = self._execution_strategy(envelope, strategy)
+            if not self.worker_handles(envelope.job_id):
+                self._create_and_register_worker(
+                    envelope,
+                    execution_strategy,
+                )
             yield self._event(
                 envelope,
                 EventType.STRATEGY_SELECTED,
                 {
                     "state": state.value,
                     "status": "complete",
-                    "strategy_config": strategy,
+                    "strategy_config": execution_strategy,
                 },
             )
 
             async for worker_event in self._execute_registered_workers(
                 envelope,
-                strategy,
+                execution_strategy,
             ):
                 yield worker_event
             state = self._transition_job(envelope.job_id, "execution_complete")

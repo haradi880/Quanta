@@ -32,7 +32,12 @@
 |   |-- ARCHITECTURE.md
 |   `-- BUILD_LOG.md
 |-- engines/
-|   `-- __init__.py
+|   |-- __init__.py
+|   |-- awq_worker.py
+|   |-- base_worker.py
+|   |-- exl2_worker.py
+|   |-- gguf_worker.py
+|   `-- vllm_worker.py
 |-- notebooks/
 |   `-- __init__.py
 |-- scripts/
@@ -65,8 +70,11 @@ point, authenticates before entering its FSM, owns worker handles, and always
 harvests registered process trees before returning to IDLE. Prompt control
 follows in a later phase.
 
-`engines/` will contain the execution worker abstraction and the GGUF, AWQ,
-EXL2, and vLLM workers. It currently contains only its package marker.
+`engines/` contains the execution worker abstraction and GGUF, AWQ, EXL2, and
+vLLM workers. Modules import no backend libraries at load time. GGUF is always
+an isolated subprocess; AWQ loads AutoAWQ on instantiation; EXL2 runs the
+official converter and loads ExLlamaV2 only for inference; vLLM passes a
+concrete tensor-parallel degree and obtains exact token counts from `/tokenize`.
 
 `cluster/` will contain the API gateway, node health logic, mTLS support, and
 Ray, SLURM, and Kubernetes adapters. It currently contains only its package
@@ -135,6 +143,12 @@ undeclared fields.
 - `HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN` is optional and used only to inspect
   files in a gated/private Hugging Face repository for which the caller has
   access.
+- `HARADIBOTS_LLAMA_BIN` is required for GGUF execution and identifies the
+  compiled llama.cpp executable.
+- `HARADIBOTS_EXL2_CONVERT_SCRIPT` is required for EXL2 conversion and
+  identifies the official `convert.py`.
+- `HARADIBOTS_CACHE_ROOT` optionally overrides the per-job work/output root;
+  its default is `~/.haradibots/cache`.
 
 ## Known limitations
 
@@ -151,10 +165,13 @@ undeclared fields.
   exercised on a real hybrid CPU here.
 - Full config inspection of Meta's original gated Llama repositories has not
   been verified with an authorized account token.
-- Concrete GGUF, AWQ, EXL2, and vLLM workers do not exist until Phase 6; jobs
-  without a registered worker fail structurally at execution.
 - Real backend subprocess harvesting and Ray actor termination remain
   integration-verification items for Phases 6 and 11.
+- GGUF has not been run with a real llama.cpp binary/model in this environment.
+- AutoAWQ imports, but its CUDA kernels and real quantization are unavailable
+  on this CPU host.
+- ExLlamaV2 and vLLM are not installed because they require
+  platform/CUDA-specific builds; clean missing-backend behavior is verified.
 
 ## How to run this so far
 
@@ -208,4 +225,16 @@ Build a concrete automatic strategy:
 
 ```powershell
 python -c "from core.accelerator import select_strategy; print(select_strategy({'gpu_count': 1, 'gpus': [{'vram_free_bytes': 4 * 1024**3}]}, {'parameter_count': 7_000_000_000, 'num_layers': 32, 'num_attention_heads': 32, 'num_key_value_heads': 8, 'hidden_size': 4096, 'max_position_embeddings': 8192}))"
+```
+
+Confirm worker modules preserve the lazy-import boundary:
+
+```powershell
+python -c "import sys; before=set(sys.modules); import engines.gguf_worker, engines.awq_worker, engines.exl2_worker, engines.vllm_worker; print((set(sys.modules)-before) & {'torch','transformers','awq','exllamav2','vllm','llama_cpp'})"
+```
+
+Check a conversion before dispatch:
+
+```powershell
+python -c "from core.accelerator import check_overcompilation; print(check_overcompilation('Q4_K_M', 'Q3_K_M'))"
 ```

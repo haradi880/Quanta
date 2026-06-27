@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 pydantic
+numpy==1.26.4
 aiohttp
 redis
 sqlalchemy
@@ -8,11 +9,12 @@ psycopg2-binary
 prometheus-client
 PyJWT
 cryptography
-torch
-transformers
+torch==2.3.1
+transformers==4.45.2
 huggingface_hub
 auto-gptq
 autoawq
+peft==0.7.1
 pytest
 nvidia-ml-py3
 psutil
