@@ -22,6 +22,7 @@
 |-- core/
 |   |-- __init__.py
 |   |-- auth_middleware.py
+|   |-- profiler.py
 |   `-- schemas.py
 |-- docs/
 |   |-- __init__.py
@@ -47,11 +48,13 @@ Local metadata and generated directories such as `.git`, `.venv`, `.pytest_cache
 
 ## Module responsibilities
 
-`core/` contains the strict v3.0 wire schemas and authentication boundary. It
-will also contain hardware and model inspection, strategy planning,
-orchestration, and prompt control in later phases. Authentication supports
-hashed API keys and signed JWTs and stores the verified identity in a
-request-scoped context variable.
+`core/` contains the strict v3.0 wire schemas, authentication boundary, and
+hardware profiler. The profiler gathers NVIDIA telemetry when NVML is
+available, otherwise produces a topology-aware CPU profile; it also owns the
+thread plan, three memory formulae, and hardware decision-matrix lookup.
+Model inspection, orchestration, and prompt control follow in later phases.
+Authentication supports hashed API keys and signed JWTs and stores the
+verified identity in a request-scoped context variable.
 
 `engines/` will contain the execution worker abstraction and the GGUF, AWQ,
 EXL2, and vLLM workers. It currently contains only its package marker.
@@ -100,7 +103,8 @@ undeclared fields.
 - `ProgressEvent` is the outbound stream contract with the v3.0 event type
   vocabulary, UTC timestamp, event payload, and latest telemetry snapshot.
 - `HardwareProfile`, `GPUProfile`, and `CPUProfile` describe the hardware
-  inventory consumed by planning.
+  inventory consumed by planning. `core/profiler.py:snapshot()` now produces
+  and validates this contract.
 - `StrategyConfig` carries format, GPU layers, backend, parallelism degrees,
   and any safety warning.
 - `ErrorEnvelope` and `TeardownComplete` define structured failure and process
@@ -128,6 +132,10 @@ undeclared fields.
 - The installed Torch build is CPU-only and reports CUDA unavailable.
 - JWT validation currently uses one environment-provided HS256 signing key;
   rotating key-set support is not yet implemented.
+- NVIDIA telemetry has not been exercised on real NVIDIA hardware in this
+  environment.
+- Hybrid P/E-core classification has synthetic coverage but has not been
+  exercised on a real hybrid CPU here.
 
 ## How to run this so far
 
@@ -151,4 +159,16 @@ The generator refuses to overwrite an existing `DEV_API_KEY`. Import the Phase
 
 ```powershell
 python -c "from core.schemas import JobEnvelope; from core.auth_middleware import authenticate"
+```
+
+Produce and validate a hardware snapshot:
+
+```powershell
+python -c "from core.profiler import snapshot; from core.schemas import HardwareProfile; print(HardwareProfile.model_validate(snapshot()))"
+```
+
+Evaluate a 4 GiB GPU and 7B model against the matrix:
+
+```powershell
+python -c "from core.profiler import select_strategy; print(select_strategy({'gpu_count': 1, 'gpus': [{'vram_free_bytes': 4 * 1024**3}]}, {'model_size_b': 7, 'num_layers': 32}))"
 ```

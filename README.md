@@ -41,3 +41,15 @@ The command writes the plaintext key only to the ignored `.env` file and its
 SHA-256 hash only to the ignored `config/credentials.json` store. It does not
 print the key. To exercise JWT authentication, set a secret of at least 32
 random bytes in `HARADIBOTS_JWT_SECRET`; do not commit it.
+
+## Hardware snapshot
+
+Inspect the current machine without downloading a model:
+
+```powershell
+python -c "from core.profiler import snapshot; print(snapshot())"
+```
+
+On systems without an NVIDIA device or working NVML driver, the profiler
+returns an empty GPU list and a complete CPU fallback profile. Strategy
+selection reads `config/decision_matrix.json`.

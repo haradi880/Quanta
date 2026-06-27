@@ -1,1 +1,95 @@
-{}
+{
+  "schema_version": "3.0",
+  "tiers": [
+    {
+      "id": "cpu_x86",
+      "hardware_tier": "CPU Only (x86)",
+      "vram_gb": "0",
+      "ram_gb": "8-32",
+      "model_size_b": "<=13",
+      "min_model_size_b": 0,
+      "max_model_size_b": 13,
+      "recommended_format": "Q4_K_M",
+      "gpu_layers": 0,
+      "backend": "llama.cpp"
+    },
+    {
+      "id": "cpu_arm",
+      "hardware_tier": "CPU Only (ARM)",
+      "vram_gb": "0",
+      "ram_gb": "8-16",
+      "model_size_b": "<=7",
+      "min_model_size_b": 0,
+      "max_model_size_b": 7,
+      "recommended_format": "Q6_K",
+      "gpu_layers": 0,
+      "backend": "llama.cpp"
+    },
+    {
+      "id": "apple_silicon",
+      "hardware_tier": "Apple Silicon (M-series)",
+      "vram_gb": "shared:16-96",
+      "model_size_b": "<=70",
+      "min_model_size_b": 0,
+      "max_model_size_b": 70,
+      "recommended_format": "Q6_K/Q8_0",
+      "gpu_layers": "all",
+      "backend": "llama.cpp Metal"
+    },
+    {
+      "id": "low_vram_gpu",
+      "hardware_tier": "Low VRAM GPU",
+      "vram_gb": "4-8",
+      "model_size_b": "<=7",
+      "min_model_size_b": 0,
+      "max_model_size_b": 7,
+      "recommended_format": "Q4_K_M",
+      "gpu_layers": "calculated",
+      "backend": "llama.cpp CUDA"
+    },
+    {
+      "id": "mid_vram_gpu",
+      "hardware_tier": "Mid VRAM GPU",
+      "vram_gb": "12-16",
+      "model_size_b": "7-13",
+      "min_model_size_b": 7,
+      "max_model_size_b": 13,
+      "recommended_format": "Q8_0",
+      "gpu_layers": "all",
+      "backend": "llama.cpp CUDA"
+    },
+    {
+      "id": "high_vram_gpu",
+      "hardware_tier": "High VRAM GPU",
+      "vram_gb": "24",
+      "model_size_b": "13-34",
+      "min_model_size_b": 13,
+      "max_model_size_b": 34,
+      "recommended_format": "AWQ_INT4/EXL2",
+      "gpu_layers": "all",
+      "backend": "AutoAWQ/vLLM"
+    },
+    {
+      "id": "dual_high_vram",
+      "hardware_tier": "Dual High VRAM",
+      "vram_gb": "2x24",
+      "model_size_b": "34-70",
+      "min_model_size_b": 34,
+      "max_model_size_b": 70,
+      "recommended_format": "AWQ_INT4",
+      "gpu_layers": "tensor-parallel",
+      "backend": "vLLM/EXL2"
+    },
+    {
+      "id": "multi_gpu_cluster",
+      "hardware_tier": "Multi-GPU Cluster",
+      "vram_gb": "Nx80",
+      "model_size_b": "70-405+",
+      "min_model_size_b": 70,
+      "max_model_size_b": null,
+      "recommended_format": "FP16/BF16",
+      "gpu_layers": "tensor+pipeline",
+      "backend": "vLLM Distributed"
+    }
+  ]
+}

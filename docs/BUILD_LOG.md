@@ -107,3 +107,52 @@ None for Phase 2. The user ran the required secret generator, and all checks wer
 
 - Asked for Architecture Spec §1.2 because the build-task document omitted the binding field table; the user supplied `HaradiBots_Architecture_v3.0.docx`.
 - Asked the user to run `scripts/gen_credentials.py` so the assistant would not generate or expose the plaintext secret; the user ran it and supplied the non-secret success message.
+
+## 2026-06-27 — Phase 3: Hardware Profiler
+
+### Tasks completed
+
+- 3.1 Implemented NVIDIA GPU enumeration and telemetry through NVML with graceful CPU fallback.
+- 3.2 Implemented RAM, physical-core, topology, clock, and conservative ISA profiling.
+- 3.3 Implemented P-core-only hybrid pinning, uniform-core minus-one selection, and degraded fallback.
+- 3.4 Implemented the exact weight, GQA-aware KV-cache, and partial-offload formulae from Architecture §2.2.
+- 3.5 Populated all eight Architecture §2.3 matrix rows and implemented deterministic strategy selection with model-size limits.
+- 3.6 Implemented UUID- and UTC-identified snapshots that validate through `HardwareProfile`.
+
+### Files created or modified
+
+- `core/profiler.py` — GPU/CPU profiling, thread planning, memory formulae, matrix loading, strategy selection, and top-level snapshot.
+- `config/decision_matrix.json` — all eight architecture-defined hardware tiers and machine-readable model limits.
+- `requirements.txt` — explicit `nvidia-ml-py3` and `psutil` profiler dependencies.
+- `README.md` — hardware snapshot usage and fallback behavior.
+- `docs/BUILD_LOG.md` — verified Phase 3 build record.
+- `docs/ARCHITECTURE.md` — current structure, profiler responsibilities, contracts, limitations, and run instructions.
+
+### Verification commands and actual results
+
+- `snapshot_gpu()` returned an empty list on this no-NVIDIA environment without raising.
+- `snapshot_cpu()` returned a dictionary with 11.874 GiB total RAM, 2 physical cores, `core_topology='uniform'`, and a 3.5 GHz P-core/fallback clock during the final acceptance run.
+- Synthetic hybrid, uniform, and unknown topology inputs verified P-core IDs `[0, 2, 4, 6]`, uniform thread count `7`, and degraded fallback thread count `7` with its warning flag.
+- Formula checks returned 14,000,000,000 bytes for FP16 7B, 3,500,000,000 bytes for Q4 7B, 536,870,912 bytes for the test GQA cache, and 16 partial-offload layers for the hand-calculated test.
+- The matrix audit found eight rows; a 4 GiB GPU with a 7B/32-layer model selected `Q4_K_M`; a 13B model on that tier raised `ValueError`.
+- `snapshot()` validated through `HardwareProfile`, returned `gpu_count=0`, and reported a uniform CPU topology.
+- `.\.venv\Scripts\python.exe -m json.tool config/decision_matrix.json` exited successfully.
+- `.\.venv\Scripts\python.exe -m pytest tests/test_import_isolation.py -q` returned `1 passed in 0.04s`.
+- `.\.venv\Scripts\python.exe -m pip check` returned `No broken requirements found.`
+- `git diff --check` exited successfully.
+
+### Deviations from the roadmap
+
+- Architecture §2.3 contains eight named rows although the phase wording groups them loosely. All eight explicit rows were preserved.
+- The matrix's textual ranges were supplemented with numeric minimum and maximum model-size fields so selection can reject an impossible oversized model deterministically.
+- Windows hybrid classification uses the native `GetSystemCpuSetInformation` efficiency-class topology API. This exposes the OS-supported P/E distinction without adding a third-party CPUID dependency.
+- ISA reporting is conservative on Windows: unsupported flags are omitted rather than inferred from a CPU product name.
+
+### Needs manual verification
+
+- On an NVIDIA system with a working NVML driver, run `python -c "from core.profiler import snapshot_gpu; print(snapshot_gpu())"` and confirm every device reports UUID, VRAM, compute capability, bandwidth, temperature, power draw/limit, and NVLink peers as applicable.
+- On a real hybrid P/E-core Windows or Linux CPU, run `python -c "from core.profiler import snapshot_cpu, get_thread_config; p=snapshot_cpu(); print(p); print(get_thread_config(p))"` and confirm `p_core_ids` and `e_core_ids` are nonempty and only P-core IDs are selected.
+
+### Questions asked and answers
+
+None.
