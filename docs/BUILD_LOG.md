@@ -92,6 +92,8 @@ None for Phase 1. The user explicitly selected a CPU-compatible installation, an
 - `.\.venv\Scripts\python.exe -m pytest tests/test_import_isolation.py -q` returned `1 passed in 0.03s`.
 - `.\.venv\Scripts\python.exe -m pip check` returned `No broken requirements found.`
 - `git diff --check` exited successfully.
+- The final acceptance rerun printed `Phase 5 final acceptance audit: PASS`.
+- A tracked import scan found no `core/` or `engines/` imports from `ui`, `cli`, or `notebooks`.
 
 ### Deviations from the roadmap
 
@@ -156,6 +158,56 @@ None for Phase 2. The user ran the required secret generator, and all checks wer
 ### Questions asked and answers
 
 None.
+
+## 2026-06-27 — Phase 5: Orchestrator & State Machine
+
+### Tasks completed
+
+- 5.1 Implemented the eight-state FSM and explicit event transition table.
+- 5.2 Implemented registered-root and recursive child-process harvesting with TERM, three-second grace, KILL escalation, manifest emission, and forced-kill warnings.
+- 5.3 Implemented the authenticated async job generator, state progress, structured failure events, and unconditional teardown after state-machine entry.
+- 5.4 Implemented per-job worker registration, immutable handle inspection, and registry cleanup.
+- 5.5 Implemented concrete auto strategy planning and full-formula manual OOM warnings.
+
+### Files created or modified
+
+- `core/orchestrator.py` — FSM, worker ownership, process-tree teardown, job routing, and module-level interface entry point.
+- `core/accelerator.py` — auto/manual strategy planner and conservative manual VRAM validation.
+- `core/schemas.py` — approved `ModelMetaProfile.parameter_count` contract correction.
+- `core/hf_inspector.py` — exact SafeTensor parameter-total extraction from Hub metadata.
+- `README.md` — common orchestrator entry-point usage and Phase 6 worker boundary.
+- `docs/BUILD_LOG.md` — verified Phase 5 build record.
+- `docs/ARCHITECTURE.md` — current structure, orchestration flow, planner, contracts, limitations, and run instructions.
+
+### Verification commands and actual results
+
+- FSM verification accepted `IDLE + job_received → PROFILING` and raised `StateMachineError` for `IDLE + execution_complete`.
+- A synthetic worker that ignored TERM was force-killed after the injected test grace; `teardown_complete` reported `forced_kill_count=1`, and a warning was logged.
+- A valid-auth job with a missing local model path produced `IDLE → PROFILING → PLANNING → ERROR → TEARDOWN → IDLE`; teardown was the event immediately before terminal completion.
+- A registered test worker plus live Llama-3 metadata produced `IDLE → PROFILING → PLANNING → EXECUTING → VALIDATING → TEARDOWN → IDLE`; its registry entry was empty afterward.
+- Auto planner checks returned the architecture-defined backend for all eight hardware tiers.
+- A 4 GiB GPU manual override to FP16/all 32 layers returned `warning=True`, predicting 19,127,461,755 bytes against 4,294,967,296 available bytes.
+- Live `NousResearch/Meta-Llama-3-8B` inspection returned exact `parameter_count=8030261248` and validated through `ModelMetaProfile`.
+- Recursive teardown regression returned one forced kill and an empty registry.
+- `.\.venv\Scripts\python.exe -m compileall -q core` exited successfully.
+- `.\.venv\Scripts\python.exe -m pytest tests/test_import_isolation.py -q` returned `1 passed in 0.02s`.
+- `.\.venv\Scripts\python.exe -m pip check` returned `No broken requirements found.`
+- `git diff --check` exited successfully.
+
+### Deviations from the roadmap
+
+- Phase 5 needs exact model size for the Decision Matrix, but the Phase 2 metadata contract omitted it. With explicit user approval, `parameter_count` was added to `ModelMetaProfile` and populated from the Hub's exact SafeTensor total instead of guessing from names or file sizes.
+- The appendix lists `core/accelerator.py` before `core/orchestrator.py`, while the numbered Phase 5 tasks place accelerator last. The numbered task order was followed, and the orchestrator was switched to the accelerator planner immediately in Task 5.5.
+- Worker execution is a real registered-handle protocol, but concrete backend classes intentionally remain absent until Phase 6. A valid job without a worker fails structurally at EXECUTING rather than reporting false success.
+
+### Needs manual verification
+
+- Real TERM→KILL escalation and descendant discovery must be verified with actual backend subprocess trees in Phase 6.
+- Ray actor harvesting must be integration-tested when Ray handles are introduced in Phase 11.
+
+### Questions asked and answers
+
+- Asked permission to add `parameter_count` to `core/schemas.py` and populate it in `core/hf_inspector.py`, because these files were outside Task 5.3's listed key file. The user replied `approved`.
 
 ## 2026-06-27 — Phase 4: HuggingFace Inspector
 

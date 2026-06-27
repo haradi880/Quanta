@@ -198,6 +198,7 @@ def _validated_profile(
     values: dict[str, Any],
 ) -> dict[str, Any]:
     required_model_fields = (
+        "parameter_count",
         "num_layers",
         "hidden_size",
         "num_attention_heads",
@@ -254,6 +255,7 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
             "repo_exists": False,
             "is_gated": False,
             "repo_size_bytes": 0,
+            "parameter_count": None,
             "file_manifest": {},
             "shard_count": 0,
             "num_layers": None,
@@ -280,6 +282,15 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
     repo_size = metadata.get("usedStorage")
     if not isinstance(repo_size, int) or repo_size < 0:
         repo_size = sibling_size
+
+    safetensors_metadata = metadata.get("safetensors")
+    parameter_count = (
+        safetensors_metadata.get("total")
+        if isinstance(safetensors_metadata, dict)
+        else None
+    )
+    if not isinstance(parameter_count, int) or parameter_count < 0:
+        parameter_count = None
 
     file_manifest: dict[str, int] = {}
     shard_count = 0
@@ -350,6 +361,7 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
         "repo_exists": True,
         "is_gated": bool(metadata.get("gated", False)),
         "repo_size_bytes": int(repo_size),
+        "parameter_count": parameter_count,
         "file_manifest": file_manifest,
         "shard_count": shard_count,
         "num_layers": num_layers,

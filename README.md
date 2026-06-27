@@ -64,3 +64,18 @@ python -c "import asyncio; from core.hf_inspector import inspect_repo; print(asy
 
 Set `HF_TOKEN` only when inspecting files in a gated or private repository for
 which your Hugging Face account already has access. Do not commit the token.
+
+## Orchestration
+
+All interfaces will call the same asynchronous generator:
+
+```python
+from core.orchestrator import process_job
+
+async for event in process_job(envelope):
+    print(event.event_type, event.payload)
+```
+
+Authenticated jobs always pass through the `TEARDOWN` state before returning
+to `IDLE`. Execution requires a registered worker; concrete workers are added
+in Phase 6.

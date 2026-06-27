@@ -211,6 +211,7 @@ class ModelMetaProfile(StrictModel):
     repo_exists: bool
     is_gated: bool
     repo_size_bytes: int = Field(ge=0)
+    parameter_count: int | None = Field(default=None, ge=0)
     file_manifest: dict[str, int]
     shard_count: int = Field(ge=0)
     num_layers: int | None = Field(default=None, ge=0)
