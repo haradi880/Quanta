@@ -41,6 +41,26 @@ jobs:
       - run: pip install -r requirements-notebook.txt pytest pytest-cov psycopg2-binary PyYAML
       - run: pytest tests/ -m "not integration" --cov=core --cov-branch --cov-report=term-missing --cov-fail-under=80
 
+  packaging-contract:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest
+      - run: pytest tests/test_packaging.py -q
+      - shell: pwsh
+        run: |
+          try {
+            .\build\build_windows.ps1 -Python python
+            throw "Expected the unpopulated release vendor gate to fail."
+          } catch {
+            if ($_.Exception.Message -notmatch "Native vendor verification failed") {
+              throw
+            }
+          }
+
   docker-build:
     runs-on: ubuntu-latest
     steps:
