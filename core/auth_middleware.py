@@ -208,7 +208,7 @@ def _authentication_error(envelope: JobEnvelope, message: str) -> ErrorEnvelope:
 
 
 def authenticate(envelope: JobEnvelope) -> dict[str, Any] | ErrorEnvelope:
-    """Authenticate a version 3.0 envelope before it enters the state machine."""
+    """Authenticate a version 3.1 envelope before it enters the state machine."""
 
     request_identity.set(None)
 

@@ -555,7 +555,7 @@ def select_strategy(
 
 
 def snapshot() -> dict[str, Any]:
-    """Assemble and validate a complete version 3.0 hardware profile."""
+    """Assemble and validate a complete version 3.1 hardware profile."""
 
     gpu_profiles = snapshot_gpu()
     cpu_profile = snapshot_cpu()

@@ -6,7 +6,13 @@ from pathlib import Path
 import pytest
 from sqlalchemy import inspect
 
-from telemetry.aggregator import TelemetryAggregator, configured_sink
+from telemetry.aggregator import (
+    TelemetryAggregator,
+    _flush,
+    collect_batch,
+    configured_sink,
+    push_to_prometheus,
+)
 from telemetry.db import create_database, get_job, insert_job
 from telemetry.redis_pipeline import write_tick
 from telemetry.redis_manager import LocalRedisManager
@@ -92,6 +98,48 @@ def test_standalone_aggregator_has_no_durable_sink_by_default(monkeypatch):
     monkeypatch.delenv("HARADIBOTS_TELEMETRY_SINK", raising=False)
 
     assert configured_sink() is None
+
+
+def test_aggregator_collection_prometheus_and_sink_modes(monkeypatch):
+    redis = FakeRedis()
+    batch = asyncio.run(collect_batch(redis))
+    assert batch == [
+        {
+            "job_id": "job-1",
+            "node_id": "node-1",
+            "metrics": {"vram_pct": "50"},
+        }
+    ]
+    push_to_prometheus(batch)
+
+    monkeypatch.setenv("HARADIBOTS_TELEMETRY_SINK", "prometheus")
+    assert configured_sink() is push_to_prometheus
+    monkeypatch.setenv("HARADIBOTS_TELEMETRY_SINK", "postgresql")
+    assert configured_sink().__name__ == "push_to_postgresql"
+    monkeypatch.setenv("HARADIBOTS_TELEMETRY_SINK", "invalid")
+    with pytest.raises(ValueError, match="must be"):
+        configured_sink()
+
+
+def test_flush_supports_sync_async_and_contains_sink_failures():
+    calls = []
+
+    def sync_sink(batch):
+        calls.append(("sync", batch))
+
+    async def async_sink(batch):
+        calls.append(("async", batch))
+
+    async def broken(batch):
+        raise RuntimeError("sink down")
+
+    asyncio.run(_flush(sync_sink, [{"x": 1}]))
+    asyncio.run(_flush(async_sink, [{"x": 2}]))
+    asyncio.run(_flush(broken, [{"x": 3}]))
+    assert calls == [
+        ("sync", [{"x": 1}]),
+        ("async", [{"x": 2}]),
+    ]
 
 
 def test_threshold_file_contains_five_complete_metrics():

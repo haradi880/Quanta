@@ -8,10 +8,11 @@ from uuid import uuid4
 
 import pytest
 import yaml
+from fastapi.testclient import TestClient
 
 from cluster.health import compute_parallelism, mtls_context, probe_node
-from cluster.k8s_operator import generate_job_manifest
-from cluster.ray_manager import _load_ray
+from cluster.k8s_operator import apply, generate_job_manifest, watch
+from cluster.ray_manager import _load_ray, collect_results, submit_job, terminate
 from cluster.slurm_adapter import generate_batch_script, poll_status, submit
 
 
@@ -119,6 +120,111 @@ def test_ray_missing_dependency_has_clean_error(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", guarded)
     with pytest.raises(RuntimeError, match="Ray cluster support"):
         _load_ray()
+
+
+def test_kubectl_apply_and_watch(monkeypatch):
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, "job.batch/test configured\n", "")
+
+    monkeypatch.setattr("cluster.k8s_operator.subprocess.run", fake_run)
+    assert "configured" in apply(generate_job_manifest({"job_id": "test"}))
+
+    class Process:
+        returncode = 0
+
+        async def communicate(self):
+            return b'{"status":{"succeeded":1}}', b""
+
+    async def fake_exec(*args, **kwargs):
+        return Process()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    assert asyncio.run(watch("test", timeout_seconds=1)) == "complete"
+
+
+def test_node_server_returns_profiler_inventory(monkeypatch):
+    import cluster.node_server as server
+
+    monkeypatch.setattr(
+        server,
+        "snapshot",
+        lambda: {"gpus": [{"uuid": "GPU-test"}]},
+    )
+    response = TestClient(server.app).get("/health/gpu")
+    assert response.status_code == 200
+    assert response.json()["gpus"][0]["uuid"] == "GPU-test"
+
+
+def test_ray_submit_collect_and_terminate_with_scheduler_contract(monkeypatch):
+    import cluster.ray_manager as manager
+
+    killed = []
+
+    class RemoteMethod:
+        def __init__(self, function):
+            self.function = function
+
+        async def remote(self):
+            return self.function()
+
+    class ActorHandle:
+        def __init__(self, actor):
+            self.status = RemoteMethod(actor.status)
+            self.terminate = RemoteMethod(actor.terminate)
+
+    class ActorOptions:
+        def __init__(self, cls):
+            self.cls = cls
+
+        def options(self, **kwargs):
+            return self
+
+        def remote(self, *args):
+            return ActorHandle(self.cls(*args))
+
+    class FakeRay:
+        initialized = False
+
+        def is_initialized(self):
+            return self.initialized
+
+        def init(self, **kwargs):
+            self.initialized = True
+
+        def get(self, value):
+            return value
+
+        def remote(self, **resources):
+            return lambda cls: ActorOptions(cls)
+
+        def kill(self, actor, no_restart):
+            killed.append(actor)
+
+    class Group:
+        def ready(self):
+            return True
+
+    fake_ray = FakeRay()
+    monkeypatch.setattr(
+        manager,
+        "_load_ray",
+        lambda: (
+            fake_ray,
+            lambda bundles, strategy: Group(),
+            lambda group: None,
+            lambda **kwargs: kwargs,
+        ),
+    )
+    handle = submit_job({"tp_degree": 2}, uuid4())
+    events = asyncio.run(_collect_cluster(handle))
+    assert len(events) == 2
+    assert all(event.payload["status"] == "ready" for event in events)
+    asyncio.run(terminate(handle))
+    assert len(killed) == 2
+
+
+async def _collect_cluster(handle):
+    return [event async for event in collect_results(handle)]
 
 
 def test_certificate_script_issues_verifiable_node_cert(tmp_path):

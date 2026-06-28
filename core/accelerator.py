@@ -272,10 +272,14 @@ def check_overcompilation(
 def calc_perplexity(model: Any, token_sequence: Any) -> float:
     """Compute ``exp(-mean(log p(x_i)))`` from model likelihood output."""
 
-    try:
-        sequence_length = len(token_sequence)
-    except TypeError as exc:
-        raise ValueError("token_sequence must be a sized sequence") from exc
+    shape = getattr(token_sequence, "shape", None)
+    if shape is not None and len(shape) > 0:
+        sequence_length = int(shape[-1])
+    else:
+        try:
+            sequence_length = len(token_sequence)
+        except TypeError as exc:
+            raise ValueError("token_sequence must be a sized sequence") from exc
     if sequence_length < 2:
         raise ValueError("perplexity requires at least two tokens")
 

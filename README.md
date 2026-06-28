@@ -1,8 +1,11 @@
 # HaradiBots
 
-HaradiBots is an LLM quantization and profiling engine.
+HaradiBots is a local-first LLM inspection, quantization, validation, and
+inference engine.
 
-The repository is being built phase by phase from the HaradiBots v3.0 build roadmap.
+The implemented wire contract is v3.1. The primary distribution target is a
+single-machine Windows fat binary; Kaggle and Colab remain development
+adapters, and cluster integrations are optional.
 
 ## Development setup
 
@@ -23,15 +26,22 @@ python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 python -m pip install -r requirements.txt
 ```
 
-Run the Phase 1 test with:
+Legacy Python AWQ/GPTQ workers are optional because their wheels are tightly
+coupled to CUDA and Python versions. Install
+`requirements-quantization-optional.txt` only in a matching backend
+environment; the default GGUF/llama.cpp path does not need them.
+
+Run the enforced production-core test gate with:
 
 ```powershell
-python -m pytest tests/test_import_isolation.py
+python -m pytest tests -m "not integration" --cov=core --cov-branch --cov-fail-under=80
 ```
 
 ## Local authentication setup
 
-Generate a development API key once:
+Direct CLI and notebook use automatically creates a private local credential;
+no key setup is required. To generate a separate development API credential
+for the network interface:
 
 ```powershell
 python scripts\gen_credentials.py

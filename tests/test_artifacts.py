@@ -1,11 +1,15 @@
+import asyncio
 import struct
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
 from core.artifacts import (
     ArtifactCompatibilityError,
+    acquire_gguf_artifact,
+    acquire_source_snapshot,
     inspect_gguf_metadata,
     select_gguf_file,
 )
@@ -101,6 +105,117 @@ def test_gguf_header_supplies_planning_metadata(tmp_path):
 def test_weight_size_parameter_fallback_is_conservative():
     assert _estimate_parameter_count({"pytorch_model.bin": 4000}, None) == 1000
     assert _estimate_parameter_count({"model-Q4_0.gguf": 500}, 4) == 1000
+
+
+def test_sandboxed_gguf_and_source_acquisition(tmp_path, monkeypatch):
+    import core.artifacts as artifacts
+
+    monkeypatch.setenv("HARADIBOTS_CACHE_ROOT", str(tmp_path / "cache"))
+
+    def fake_download(**kwargs):
+        destination = Path(kwargs["local_dir"])
+        destination.mkdir(parents=True, exist_ok=True)
+        path = destination / kwargs["filename"]
+        path.write_bytes(b"GGUF")
+        return str(path)
+
+    def fake_snapshot(**kwargs):
+        destination = Path(kwargs["local_dir"])
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / "config.json").write_text("{}", encoding="utf-8")
+        (destination / "model.safetensors").write_bytes(b"weights")
+        return str(destination)
+
+    monkeypatch.setattr(artifacts, "hf_hub_download", fake_download)
+    monkeypatch.setattr(artifacts, "snapshot_download", fake_snapshot)
+    metadata = {"file_manifest": {"model-Q4_K_M.gguf": 4}}
+    path = asyncio.run(
+        acquire_gguf_artifact("owner/model", metadata, "Q4_K_M")
+    )
+    assert Path(path).read_bytes() == b"GGUF"
+    source = asyncio.run(acquire_source_snapshot("owner/source"))
+    assert (Path(source) / "model.safetensors").is_file()
+
+
+def test_source_snapshot_rejects_incomplete_download(tmp_path, monkeypatch):
+    import core.artifacts as artifacts
+
+    monkeypatch.setenv("HARADIBOTS_CACHE_ROOT", str(tmp_path / "cache"))
+
+    def missing_config(**kwargs):
+        destination = Path(kwargs["local_dir"])
+        destination.mkdir(parents=True, exist_ok=True)
+        return str(destination)
+
+    monkeypatch.setattr(artifacts, "snapshot_download", missing_config)
+    with pytest.raises(OSError, match="config.json"):
+        asyncio.run(acquire_source_snapshot("owner/source"))
+
+
+def test_source_snapshot_rejects_missing_weights(tmp_path, monkeypatch):
+    import core.artifacts as artifacts
+
+    monkeypatch.setenv("HARADIBOTS_CACHE_ROOT", str(tmp_path / "cache"))
+
+    def config_only(**kwargs):
+        destination = Path(kwargs["local_dir"])
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / "config.json").write_text("{}", encoding="utf-8")
+        return str(destination)
+
+    monkeypatch.setattr(artifacts, "snapshot_download", config_only)
+    with pytest.raises(OSError, match="no supported full-precision weights"):
+        asyncio.run(acquire_source_snapshot("owner/source"))
+
+
+def test_gguf_acquisition_rejects_storage_and_empty_download(tmp_path, monkeypatch):
+    import core.artifacts as artifacts
+
+    monkeypatch.setenv("HARADIBOTS_CACHE_ROOT", str(tmp_path / "cache"))
+    monkeypatch.setattr(
+        artifacts.shutil,
+        "disk_usage",
+        lambda path: type("Usage", (), {"free": 1})(),
+    )
+    metadata = {"file_manifest": {"model.gguf": 100}}
+    with pytest.raises(OSError, match="insufficient storage"):
+        asyncio.run(acquire_gguf_artifact("owner/model", metadata, "Q4"))
+
+    monkeypatch.setattr(
+        artifacts.shutil,
+        "disk_usage",
+        lambda path: type("Usage", (), {"free": 1000})(),
+    )
+
+    def empty_download(**kwargs):
+        path = Path(kwargs["local_dir"]) / kwargs["filename"]
+        path.write_bytes(b"")
+        return str(path)
+
+    monkeypatch.setattr(artifacts, "hf_hub_download", empty_download)
+    with pytest.raises(OSError, match="missing or empty"):
+        asyncio.run(acquire_gguf_artifact("owner/model", metadata, "Q4"))
+
+
+@pytest.mark.parametrize(
+    "payload, message",
+    [
+        (b"NOPE", "file is not GGUF"),
+        (b"GGUF" + struct.pack("<I", 1), "unsupported GGUF version"),
+        (
+            b"GGUF"
+            + struct.pack("<I", 3)
+            + struct.pack("<Q", 0)
+            + struct.pack("<Q", 100_001),
+            "entry count exceeds",
+        ),
+    ],
+)
+def test_gguf_metadata_rejects_invalid_headers(tmp_path, payload, message):
+    path = tmp_path / "bad.gguf"
+    path.write_bytes(payload)
+    with pytest.raises(ValueError, match=message):
+        inspect_gguf_metadata(path)
 
 
 def test_gguf_quantization_commands_support_conversion_and_requantization(

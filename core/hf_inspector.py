@@ -203,6 +203,13 @@ def _quant_bits(config: dict[str, Any], quant_format: str | None) -> float | Non
             if isinstance(value, (int, float)) and value > 0:
                 return float(value)
     if quant_format:
+        exl2_match = re.search(
+            r"EXL2[_-]?(\d+(?:\.\d+)?)",
+            quant_format,
+            re.IGNORECASE,
+        )
+        if exl2_match:
+            return float(exl2_match.group(1))
         match = re.search(r"(\d+(?:\.\d+)?)", quant_format)
         if match:
             return float(match.group(1))

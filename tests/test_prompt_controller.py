@@ -2,6 +2,7 @@ import asyncio
 import json
 
 from aiohttp import web
+import pytest
 
 from core.accelerator import calc_available_ctx, count_tokens_native
 from core.prompt_controller import format_system_prompt
@@ -22,6 +23,8 @@ def test_all_prompt_families_and_unknown_fallback():
     assert format_system_prompt("p", "phi-3").startswith("<|system|>")
     assert format_system_prompt("p", "gemma").startswith("<start_of_turn>user")
     assert format_system_prompt("  raw  ", "unknown") == "  raw  "
+    with pytest.raises(ValueError, match="non-empty"):
+        format_system_prompt("   ", "llama3")
 
 
 def test_persona_file_contains_three_non_deletable_presets():
