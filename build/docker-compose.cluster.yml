@@ -1,0 +1,74 @@
+services:
+  head:
+    build:
+      context: ..
+      dockerfile: build/Dockerfile
+      args:
+        INSTALL_CLUSTER: "1"
+    image: haradibots:cluster
+    entrypoint: ["/bin/bash", "/app/build/cluster_entrypoint.sh"]
+    environment:
+      HARADIBOTS_CLUSTER_ROLE: head
+      HARADIBOTS_MTLS_DIR: /run/haradibots/mtls
+      RAY_USE_TLS: "1"
+      RAY_TLS_SERVER_CERT: /run/haradibots/mtls/coordinator.crt
+      RAY_TLS_SERVER_KEY: /run/haradibots/mtls/coordinator.key
+      RAY_TLS_CA_CERT: /run/haradibots/mtls/ca.crt
+    ports:
+      - "8000:8000"
+      - "8265:8265"
+    volumes:
+      - ./../cluster/mtls:/run/haradibots/mtls:ro
+      - head-cache:/var/lib/haradibots/cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  worker-1:
+    image: haradibots:cluster
+    depends_on: [head]
+    entrypoint: ["/bin/bash", "/app/build/cluster_entrypoint.sh"]
+    environment:
+      HARADIBOTS_CLUSTER_ROLE: worker
+      HARADIBOTS_RAY_HEAD: head:6379
+      HARADIBOTS_MTLS_DIR: /run/haradibots/mtls
+      RAY_USE_TLS: "1"
+      RAY_TLS_SERVER_CERT: /run/haradibots/mtls/worker-1.crt
+      RAY_TLS_SERVER_KEY: /run/haradibots/mtls/worker-1.key
+      RAY_TLS_CA_CERT: /run/haradibots/mtls/ca.crt
+    volumes:
+      - ./../cluster/mtls:/run/haradibots/mtls:ro
+      - worker1-cache:/var/lib/haradibots/cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  worker-2:
+    image: haradibots:cluster
+    depends_on: [head]
+    entrypoint: ["/bin/bash", "/app/build/cluster_entrypoint.sh"]
+    environment:
+      HARADIBOTS_CLUSTER_ROLE: worker
+      HARADIBOTS_RAY_HEAD: head:6379
+      HARADIBOTS_MTLS_DIR: /run/haradibots/mtls
+      RAY_USE_TLS: "1"
+      RAY_TLS_SERVER_CERT: /run/haradibots/mtls/worker-2.crt
+      RAY_TLS_SERVER_KEY: /run/haradibots/mtls/worker-2.key
+      RAY_TLS_CA_CERT: /run/haradibots/mtls/ca.crt
+    volumes:
+      - ./../cluster/mtls:/run/haradibots/mtls:ro
+      - worker2-cache:/var/lib/haradibots/cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+volumes:
+  head-cache:
+  worker1-cache:
+  worker2-cache:

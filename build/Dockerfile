@@ -17,7 +17,12 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY requirements.txt /app/requirements.txt
+COPY requirements-cluster.txt /app/requirements-cluster.txt
 RUN python3.11 -m pip install --no-cache-dir -r requirements.txt
+ARG INSTALL_CLUSTER=0
+RUN if [ "$INSTALL_CLUSTER" = "1" ]; then \
+      python3.11 -m pip install --no-cache-dir -r requirements-cluster.txt; \
+    fi
 
 COPY . /app
 RUN mkdir -p /var/lib/haradibots/cache \

@@ -627,3 +627,24 @@ None.
 - Docker could not be built locally because this Windows host has no Docker executable; GitHub Actions built it successfully in 2m26s.
 - Measured total coverage is 46.64%, below the required 80%; enforcement is intentionally not yet enabled and production release remains blocked.
 - GitHub Actions passed lint, import isolation, unit tests, and Docker build on PR #2.
+## 2026-06-28 — Optional Cluster Foundations
+
+### Changes
+
+- Added an OpenSSL CA/node certificate provisioning script with server/client EKU and SAN.
+- Added mTLS GPU health probing with a five-second failure bound.
+- Added healthy-GPU-only asymmetric parallelism and queue threshold.
+- Added lazy Ray placement groups, SLURM script/subprocess handling, and Kubernetes Job generation/watch.
+- Added a three-node Ray compose topology with no worker ports and mandatory Ray plus node-health TLS.
+
+### Verification
+
+- A real temporary CA and node certificate were generated and passed `openssl verify`.
+- Unauthenticated/missing-certificate health probing fails closed.
+- Removing one GPU from four yields a degraded three-GPU plan; dropping below two queues the job.
+- SLURM command parsing, Kubernetes GPU/mTLS manifest, compose isolation, and clean missing-Ray behavior pass tests.
+
+### Remaining cluster gate
+
+- No real Ray/SLURM/Kubernetes scheduler is available on this host.
+- Scheduler adapters currently provision and report readiness; model-shard execution and artifact return must be integrated before cluster jobs can be called production-complete.

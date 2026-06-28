@@ -171,6 +171,12 @@ Ray, SLURM, Kubernetes, PostgreSQL, remote Prometheus, and mTLS cluster behavior
 remain optional server features. Cluster work must not begin until the
 single-node production gate passes.
 
+The optional cluster foundation now includes certificate provisioning,
+mTLS-only node inventory, healthy-GPU-only planning, and lazy scheduler
+adapters. These components are unit tested, but real scheduler execution and
+artifact return are not externally verified and therefore remain outside the
+production-complete claim.
+
 ## 7.1 Fault tolerance and irreversible purge
 
 OOM recovery halves batch size for three retries before rebuilding execution on

@@ -25,6 +25,10 @@ config/credentials.json
 *.log
 *.sqlite
 *.sqlite3
+cluster/mtls/*.key
+cluster/mtls/*.crt
+cluster/mtls/*.csr
+cluster/mtls/*.srl
 
 # Editors and operating systems
 .idea/
