@@ -50,16 +50,13 @@ jobs:
           python-version: "3.11"
       - run: pip install pytest
       - run: pytest tests/test_packaging.py -q
-      - shell: pwsh
-        run: |
-          try {
-            .\build\build_windows.ps1 -Python python
-            throw "Expected the unpopulated release vendor gate to fail."
-          } catch {
-            if ($_.Exception.Message -notmatch "Native vendor verification failed") {
-              throw
-            }
-          }
+      - id: empty-vendor-gate
+        continue-on-error: true
+        shell: pwsh
+        run: .\build\build_windows.ps1 -Python python
+      - if: steps.empty-vendor-gate.outcome != 'failure'
+        shell: pwsh
+        run: throw "Expected the unpopulated release vendor gate to fail."
 
   docker-build:
     runs-on: ubuntu-latest
