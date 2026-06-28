@@ -84,9 +84,15 @@ def test_gguf_header_supplies_planning_metadata(tmp_path):
     path.write_bytes(
         b"GGUF"
         + struct.pack("<I", 3)
-        + struct.pack("<Q", 0)
+        + struct.pack("<Q", 1)
         + struct.pack("<Q", len(entries))
         + b"".join(entries)
+        + _gguf_string("output.weight")
+        + struct.pack("<I", 2)
+        + struct.pack("<Q", 3)
+        + struct.pack("<Q", 2)
+        + struct.pack("<I", 0)
+        + struct.pack("<Q", 0)
     )
 
     metadata = inspect_gguf_metadata(path)
@@ -99,7 +105,42 @@ def test_gguf_header_supplies_planning_metadata(tmp_path):
         "num_key_value_heads": 4,
         "max_position_embeddings": 4096,
         "vocab_size": 3,
+        "parameter_count": 6,
     }
+
+
+def test_local_gguf_profile_is_plannable_without_hugging_face(tmp_path):
+    model = tmp_path / "tiny-Q4_0.gguf"
+    entries = [
+        _metadata_entry("general.architecture", 8, "llama"),
+        _metadata_entry("llama.block_count", 4, 1),
+        _metadata_entry("llama.embedding_length", 4, 4),
+        _metadata_entry("llama.attention.head_count", 4, 2),
+        _metadata_entry("llama.attention.head_count_kv", 4, 1),
+        _metadata_entry("llama.context_length", 4, 128),
+        _metadata_entry("tokenizer.ggml.tokens", 9, ["a", "b"]),
+    ]
+    model.write_bytes(
+        b"GGUF"
+        + struct.pack("<I", 3)
+        + struct.pack("<Q", 1)
+        + struct.pack("<Q", len(entries))
+        + b"".join(entries)
+        + _gguf_string("weight")
+        + struct.pack("<I", 2)
+        + struct.pack("<Q", 4)
+        + struct.pack("<Q", 4)
+        + struct.pack("<I", 2)
+        + struct.pack("<Q", 0)
+    )
+
+    profile = Orchestrator._inspect_local_gguf(model)
+
+    assert profile["parameter_count"] == 16
+    assert profile["quant_format"] == "Q4_0"
+    assert profile["quant_bits"] == 4.0
+    assert profile["attention_type"] == "mqa"
+    assert profile["file_manifest"] == {model.name: model.stat().st_size}
 
 
 def test_weight_size_parameter_fallback_is_conservative():

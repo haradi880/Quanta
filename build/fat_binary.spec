@@ -67,7 +67,7 @@ exe = EXE(
     analysis.scripts,
     [],
     exclude_binaries=True,
-    name="HaradiBots",
+    name="Quanta",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -80,5 +80,5 @@ collect = COLLECT(
     analysis.datas,
     strip=False,
     upx=False,
-    name="HaradiBots",
+    name="Quanta",
 )

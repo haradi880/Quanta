@@ -1,5 +1,7 @@
 # Release Status
 
+Product: **HaradiBots Quanta**. Windows executable: **`Quanta.exe`**.
+
 This matrix is the authoritative production-acceptance record. “Passed” means
 the requirement was exercised against the real implementation; unit tests or
 static inspection alone are labeled separately.
@@ -18,8 +20,8 @@ static inspection alone are labeled separately.
 | Five-phase purge | Passed by automated integration test | Ordering, unsafe-root, symlink, CLI, and GUI confirmation coverage |
 | Local Garnet lifecycle | Passed | Real bundled `PING`, `HSET`, `HGETALL`, `SCAN`, and clean stop |
 | Vendor integrity and notices | Passed | Six required assets plus full SHA-256 inventory; Garnet/.NET notices bundled |
-| One-dir executable build | Passed on build host | Packaged executable and packaged doctor passed |
-| Clean-machine offline execution | External verification required | Must be copied to a second Windows machine with networking disabled |
+| One-dir executable build | Passed on build host | Packaged executable, packaged doctor, and local-GGUF CLI lifecycle passed |
+| Clean-machine offline execution | External verification required | Build-host local-GGUF lifecycle passes; distribution must still be copied to a second Windows machine with networking disabled |
 | Security/dependency checks | Passed and CI-enforced | pip-audit, Bandit medium/high scan, and tracked-production secret signatures |
 | Core branch coverage | Passed | 80% minimum enforced locally and in CI |
 | Optional Ray/SLURM/Kubernetes | Foundation only | Provisioning/readiness adapters tested; distributed execution and artifact return are not integrated |

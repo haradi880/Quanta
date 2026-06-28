@@ -796,3 +796,33 @@ None.
   and tracked-production secret-signature detection.
 - Local regression evidence: 153 passed, one optional integration test
   skipped, and 80.11% branch-aware core coverage.
+
+## 2026-06-28 — Offline local-GGUF lifecycle
+
+- Removed the Hugging Face dependency from local GGUF execution. The header
+  inspector now reads tensor descriptors and computes the exact parameter
+  count needed for planning without loading tensor data or contacting a
+  network service.
+- Local profiles derive quantization, attention type, GQA ratio, model
+  dimensions, file size, and vocabulary/context metadata directly from the
+  artifact and remain strict `ModelMetaProfile` contracts.
+- Fixed a teardown race where an inference subprocess could exit between the
+  liveness check and `terminate()`. `ProcessLookupError` now means the process
+  is already harvested rather than aborting teardown.
+- Real build-host evidence using only a local Q4_0 file and bundled
+  `llama-completion`: 42 progress events, no error event,
+  `teardown_complete`, and final `IDLE/complete`.
+
+## 2026-06-28 — Product and executable identity
+
+- The canonical product name is **HaradiBots Quanta**.
+- The one-directory Windows application is built as `dist/Quanta/Quanta.exe`;
+  packaging tests and release smoke commands reject the former executable
+  identity.
+- Rebuilt the complete renamed distribution: 17,328 files,
+  1,042,503,714 bytes. `Quanta.exe` SHA-256 is
+  `44BD2B45D7625689615DBC1E5D09A916ED0DF49C00329B4A2E64B78F2DCC94A5`.
+- The packaged `Quanta.exe run --model <local.gguf> --json` lifecycle exited
+  zero, emitted `teardown_complete` with zero forced kills, and ended at
+  `IDLE/complete`. JSON mode no longer starts Rich's Unicode progress renderer,
+  preventing the prior Windows cp1252 shutdown failure.

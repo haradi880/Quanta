@@ -1,4 +1,4 @@
-"""HaradiBots terminal interface."""
+"""HaradiBots Quanta terminal interface."""
 
 from __future__ import annotations
 
@@ -62,6 +62,13 @@ def build_envelope(args: argparse.Namespace) -> JobEnvelope:
 async def run_job(args: argparse.Namespace) -> int:
     envelope = build_envelope(args)
     exit_code = 0
+    if args.json:
+        async for event in process_job(envelope):
+            if event.event_type.value == "error":
+                exit_code = 1
+            console.print_json(event.model_dump_json())
+        return exit_code
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -74,8 +81,6 @@ async def run_job(args: argparse.Namespace) -> int:
             progress.update(task, description=f"{state}: {status}".rstrip(": "))
             if event.event_type.value == "error":
                 exit_code = 1
-            if args.json:
-                console.print_json(event.model_dump_json())
     return exit_code
 
 
@@ -103,7 +108,7 @@ def show_status(job_id: str) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="haradibots")
+    parser = argparse.ArgumentParser(prog="Quanta")
     subparsers = parser.add_subparsers(dest="command", required=True)
     run = subparsers.add_parser("run", help="submit a model job")
     run.add_argument("--model", required=True)

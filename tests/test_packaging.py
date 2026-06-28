@@ -93,7 +93,7 @@ def test_packaging_manifests_are_offline_and_one_dir():
 
     assert "COLLECT(" in spec
     assert "onefile" not in spec.lower()
-    assert 'name="HaradiBots"' in spec
+    assert spec.count('name="Quanta"') == 2
     assert "Path(SPECPATH).resolve().parent" in spec
     assert "parent.parent" not in spec
     assert '".exe", ".dll", ".pyd"' in spec

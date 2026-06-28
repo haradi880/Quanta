@@ -1,6 +1,6 @@
-# HaradiBots Deployment
+# HaradiBots Quanta Deployment
 
-HaradiBots has two deployment shapes. The Enterprise Fat Binary is the primary
+HaradiBots Quanta has two deployment shapes. The Enterprise Fat Binary is the primary
 single-machine product. The container image is for authenticated API/server
 use. A release is not valid unless the native bundle verifier and offline smoke
 test pass.
@@ -24,12 +24,12 @@ test pass.
    .\build\build_windows.ps1 -Python python -Clean
    ```
 
-4. Copy `dist/HaradiBots/` to a clean machine with no Python installation.
+4. Copy `dist/Quanta/` to a clean machine with no Python installation.
 5. Disconnect networking and run:
 
    ```powershell
-   .\HaradiBots.exe --help
-   .\HaradiBots.exe doctor --json
+   .\Quanta.exe --help
+   .\Quanta.exe doctor --json
    ```
 
 6. The doctor must report all required llama.cpp tools, converter dependencies,

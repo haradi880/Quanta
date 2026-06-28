@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
@@ -31,6 +32,7 @@ from core.schemas import (
     HardwareProfile,
     JobEnvelope,
     JobOperation,
+    ModelMetaProfile,
     ProgressEvent,
     SCHEMA_VERSION,
     TeardownComplete,
@@ -147,6 +149,64 @@ class Orchestrator:
     def _set_initial_state(self, job_id: UUID) -> None:
         self._job_states[job_id] = JobState.IDLE
         self._state_history[job_id] = [JobState.IDLE]
+
+    @staticmethod
+    def _inspect_local_gguf(path: Path) -> dict[str, Any]:
+        metadata = inspect_gguf_metadata(path)
+        name = path.name.upper()
+        quant_match = re.search(r"(Q[2-8](?:_[A-Z0-9]+)*)", name)
+        quant_format = quant_match.group(1) if quant_match else "GGUF"
+        bit_match = re.match(r"Q([2-8])", quant_format)
+        quant_bits = float(bit_match.group(1)) if bit_match else 16.0
+        heads = metadata.get("num_attention_heads")
+        kv_heads = metadata.get("num_key_value_heads") or heads
+        if isinstance(heads, int) and heads > 0 and kv_heads == 1:
+            attention_type = "mqa"
+        elif (
+            isinstance(heads, int)
+            and heads > 0
+            and isinstance(kv_heads, int)
+            and kv_heads < heads
+        ):
+            attention_type = "gqa"
+        else:
+            attention_type = "mha"
+        ratio = (
+            kv_heads / heads
+            if isinstance(heads, int)
+            and heads > 0
+            and isinstance(kv_heads, int)
+            else None
+        )
+        values = {
+            "repo_id": str(path),
+            "repo_exists": True,
+            "is_gated": False,
+            "repo_size_bytes": path.stat().st_size,
+            "parameter_count": metadata.get("parameter_count"),
+            "file_manifest": {path.name: path.stat().st_size},
+            "num_shards": 1,
+            "total_weight_bytes": path.stat().st_size,
+            **{
+                key: metadata.get(key)
+                for key in (
+                    "num_layers",
+                    "hidden_size",
+                    "num_attention_heads",
+                    "num_key_value_heads",
+                    "vocab_size",
+                    "max_position_embeddings",
+                    "model_family",
+                )
+            },
+            "attention_type": attention_type,
+            "kv_head_ratio": ratio,
+            "upper_bound_only": ratio is None,
+            "is_prequantized": True,
+            "quant_format": quant_format,
+            "quant_bits": quant_bits,
+        }
+        return ModelMetaProfile.model_validate(values).model_dump(mode="python")
 
     @staticmethod
     def _degrade(
@@ -445,12 +505,17 @@ class Orchestrator:
             method = getattr(handle, method_name, None)
         if not callable(method):
             return
-        if inspect.iscoroutinefunction(method):
-            await method()
+        try:
+            if inspect.iscoroutinefunction(method):
+                await method()
+                return
+            result = method()
+            if inspect.isawaitable(result):
+                await result
+        except (ProcessLookupError, psutil.NoSuchProcess):
+            # A process that exits between the liveness check and signal is
+            # already successfully harvested.
             return
-        result = method()
-        if inspect.isawaitable(result):
-            await result
 
     @classmethod
     async def _wait_for_exit(cls, handle: Any) -> None:
@@ -771,26 +836,30 @@ class Orchestrator:
                 succeeded = True
                 return
 
+            acquired_model_path = None
             if envelope.source_model.local_path is not None:
-                local_path = Path(envelope.source_model.local_path)
-                if not local_path.exists():
+                local_path = Path(envelope.source_model.local_path).expanduser().resolve()
+                if not local_path.is_file():
                     raise FileNotFoundError(
                         f"local model path does not exist: {local_path}"
                     )
-                raise RuntimeError(
-                    "local model inspection is not implemented in the "
-                    "Hugging Face metadata phase"
-                )
-
-            repo_id = envelope.source_model.repo_id
-            if repo_id is None:
-                raise RuntimeError("model source contains no repository identifier")
-            model_meta = await inspect_repo(repo_id)
-            if not model_meta["repo_exists"]:
-                raise FileNotFoundError(
-                    f"Hugging Face repository does not exist: "
-                    f"{repo_id}"
-                )
+                if local_path.suffix.lower() != ".gguf":
+                    raise RuntimeError(
+                        "offline local execution currently requires a GGUF file"
+                    )
+                model_meta = self._inspect_local_gguf(local_path)
+                acquired_model_path = str(local_path)
+                repo_id = str(local_path)
+            else:
+                repo_id = envelope.source_model.repo_id
+                if repo_id is None:
+                    raise RuntimeError("model source contains no repository identifier")
+                model_meta = await inspect_repo(repo_id)
+                if not model_meta["repo_exists"]:
+                    raise FileNotFoundError(
+                        f"Hugging Face repository does not exist: "
+                        f"{repo_id}"
+                    )
             if model_meta["parameter_count"] is None:
                 raise RuntimeError(
                     "model parameter count is unavailable; strategy cannot be planned"
@@ -819,8 +888,9 @@ class Orchestrator:
                     )
                     if not safety["allowed"]:
                         raise RuntimeError(str(safety["reason"]))
-            acquired_model_path = None
             if (
+                acquired_model_path is None
+                and
                 envelope.operation is JobOperation.QUANTIZE
                 and model_meta.get("is_prequantized")
             ):
@@ -834,7 +904,7 @@ class Orchestrator:
                 for field_name, value in gguf_metadata.items():
                     if value is not None:
                         model_meta[field_name] = value
-            elif envelope.operation is not JobOperation.QUANTIZE and any(
+            elif acquired_model_path is None and envelope.operation is not JobOperation.QUANTIZE and any(
                 filename.lower().endswith(".gguf")
                 for filename in model_meta["file_manifest"]
             ):

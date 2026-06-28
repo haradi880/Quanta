@@ -16,9 +16,9 @@ try {
     & $Python @arguments
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed." }
 
-    & (Join-Path $RepoRoot "dist\HaradiBots\HaradiBots.exe") "--help"
+    & (Join-Path $RepoRoot "dist\Quanta\Quanta.exe") "--help"
     if ($LASTEXITCODE -ne 0) { throw "Packaged CLI smoke test failed." }
-    & (Join-Path $RepoRoot "dist\HaradiBots\HaradiBots.exe") "doctor" "--json"
+    & (Join-Path $RepoRoot "dist\Quanta\Quanta.exe") "doctor" "--json"
     if ($LASTEXITCODE -ne 0) { throw "Packaged native runtime check failed." }
 } finally {
     Pop-Location

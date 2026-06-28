@@ -50,6 +50,29 @@ def test_all_degradation_tiers_apply_architecture_actions():
     assert tier5["preserve_partial_artifacts"] is True
 
 
+def test_teardown_accepts_process_that_exits_before_signal():
+    class ExitedProcess:
+        pid = 987654
+        returncode = 0
+
+        def terminate(self):
+            raise ProcessLookupError
+
+    class Worker:
+        process = ExitedProcess()
+
+    job_id = uuid4()
+    orchestrator = Orchestrator(teardown_grace_seconds=0)
+    orchestrator.register_worker(job_id, Worker())
+
+    event = asyncio.run(orchestrator._teardown(job_id))
+
+    assert event.event_type is EventType.TEARDOWN_COMPLETE
+    assert event.payload["harvested_pids"] == [987654]
+    assert event.payload["forced_kill_count"] == 0
+    assert orchestrator.worker_handles(job_id) == ()
+
+
 def test_oom_retries_three_times_then_uses_cpu_fallback(tmp_path):
     orchestrator = Orchestrator(teardown_grace_seconds=0)
     calls = []

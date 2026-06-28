@@ -33,6 +33,26 @@ def test_cli_builds_exact_authenticated_envelope(monkeypatch):
     assert envelope.interface.value == "cli"
 
 
+def test_cli_json_mode_avoids_rich_progress_renderer(monkeypatch):
+    import cli.main as cli
+
+    monkeypatch.setattr(cli, "ensure_local_api_key", lambda: "test-key")
+    args = build_parser().parse_args(
+        ["run", "--model", "owner/model", "--json"]
+    )
+    rendered = []
+
+    async def fake_process_job(job):
+        yield event_for(job.job_id)
+
+    monkeypatch.setattr(cli, "process_job", fake_process_job)
+    monkeypatch.setattr(cli.console, "print_json", rendered.append)
+
+    assert asyncio.run(cli.run_job(args)) == 0
+    assert len(rendered) == 1
+    assert '"event_type":"complete"' in rendered[0]
+
+
 def test_cli_purge_requires_exact_second_confirmation(monkeypatch):
     import cli.main as cli
 

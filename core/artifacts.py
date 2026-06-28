@@ -188,7 +188,9 @@ def inspect_gguf_metadata(path: str | Path) -> dict[str, Any]:
         version = struct.unpack("<I", read_exact(handle, 4))[0]
         if version not in {2, 3}:
             raise ValueError(f"unsupported GGUF version {version}")
-        struct.unpack("<Q", read_exact(handle, 8))[0]  # tensor count
+        tensor_count = struct.unpack("<Q", read_exact(handle, 8))[0]
+        if tensor_count > 10_000_000:
+            raise ValueError("GGUF tensor count exceeds safety limit")
         metadata_count = struct.unpack("<Q", read_exact(handle, 8))[0]
         if metadata_count > 100_000:
             raise ValueError("GGUF metadata entry count exceeds safety limit")
@@ -197,6 +199,18 @@ def inspect_gguf_metadata(path: str | Path) -> dict[str, Any]:
             key = read_string(handle)
             value_type = struct.unpack("<I", read_exact(handle, 4))[0]
             metadata[key] = read_value(handle, value_type)
+        parameter_count = 0
+        for _ in range(tensor_count):
+            read_string(handle)  # tensor name
+            dimension_count = struct.unpack("<I", read_exact(handle, 4))[0]
+            if dimension_count > 8:
+                raise ValueError("GGUF tensor dimension count exceeds safety limit")
+            tensor_parameters = 1
+            for _ in range(dimension_count):
+                tensor_parameters *= struct.unpack("<Q", read_exact(handle, 8))[0]
+            read_exact(handle, 4)  # ggml tensor type
+            read_exact(handle, 8)  # aligned tensor-data offset
+            parameter_count += tensor_parameters
 
     architecture = metadata.get("general.architecture")
 
@@ -213,7 +227,7 @@ def inspect_gguf_metadata(path: str | Path) -> dict[str, Any]:
         return matches[0] if matches else None
 
     tokens = metadata.get("tokenizer.ggml.tokens")
-    return {
+    result = {
         "model_family": architecture if isinstance(architecture, str) else None,
         "num_layers": architecture_value("block_count"),
         "hidden_size": architecture_value("embedding_length"),
@@ -222,3 +236,6 @@ def inspect_gguf_metadata(path: str | Path) -> dict[str, Any]:
         "max_position_embeddings": architecture_value("context_length"),
         "vocab_size": tokens.get("count") if isinstance(tokens, dict) else None,
     }
+    if tensor_count:
+        result["parameter_count"] = parameter_count
+    return result

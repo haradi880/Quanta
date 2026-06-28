@@ -75,7 +75,7 @@ def build_envelope(model: str, mode: str, jwt_token: str) -> JobEnvelope:
 class HaradiBotsApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("HaradiBots")
+        self.root.title("HaradiBots Quanta")
         self.events: queue.Queue[object] = queue.Queue()
         self.model = tk.StringVar()
         self.mode = tk.StringVar(value="auto")
@@ -115,7 +115,10 @@ class HaradiBotsApp:
 
     def _submit(self) -> None:
         if not self.model.get().strip():
-            messagebox.showerror("HaradiBots", "Enter a model repository or path.")
+            messagebox.showerror(
+                "HaradiBots Quanta",
+                "Enter a model repository or path.",
+            )
             return
         try:
             envelope = build_envelope(
@@ -124,7 +127,7 @@ class HaradiBotsApp:
                 load_session_jwt(),
             )
         except (RuntimeError, ValueError) as exc:
-            messagebox.showerror("HaradiBots", str(exc))
+            messagebox.showerror("HaradiBots Quanta", str(exc))
             return
         self.submit.state(["disabled"])
         threading.Thread(
@@ -137,7 +140,7 @@ class HaradiBotsApp:
             "This permanently deletes local models, outputs, validation data, "
             "credentials, logs, and job history after terminating all workers."
         )
-        if not messagebox.askokcancel("HaradiBots Nuclear Option", warning):
+        if not messagebox.askokcancel("HaradiBots Quanta Nuclear Option", warning):
             return
         confirmation = simpledialog.askstring(
             "Confirm purge",
@@ -145,7 +148,10 @@ class HaradiBotsApp:
             parent=self.root,
         )
         if confirmation != "CONFIRM":
-            messagebox.showinfo("HaradiBots", "Purge aborted; nothing was deleted.")
+            messagebox.showinfo(
+                "HaradiBots Quanta",
+                "Purge aborted; nothing was deleted.",
+            )
             return
         self.submit.state(["disabled"])
 

@@ -1,6 +1,6 @@
-# HaradiBots
+# HaradiBots Quanta
 
-HaradiBots is a local-first LLM inspection, quantization, validation, and
+HaradiBots Quanta is a local-first LLM inspection, quantization, validation, and
 inference engine.
 
 The implemented wire contract is v3.1. The primary distribution target is a
@@ -9,7 +9,7 @@ adapters, and cluster integrations are optional.
 
 ## Development setup
 
-HaradiBots requires Python 3.11 or newer. On Windows, create and activate a
+HaradiBots Quanta requires Python 3.11 or newer. On Windows, create and activate a
 virtual environment:
 
 ```powershell
@@ -50,7 +50,7 @@ contents. Then run:
 ```
 
 The script verifies every native asset before PyInstaller runs and smoke-tests
-`dist\HaradiBots\HaradiBots.exe --help` plus `doctor --json`. The doctor probes
+`dist\Quanta\Quanta.exe --help` plus `doctor --json`. The doctor probes
 the llama.cpp executables, converter source tree, and a complete local Garnet
 start plus `PING`/`HSET`/`HGETALL`/`SCAN`/stop cycle. Filenames alone are not
 accepted as release evidence.
@@ -179,7 +179,7 @@ backends and preserves the runtime-provided Torch build.
 
 For a real Kaggle/Colab GGUF smoke test, build llama.cpp in the notebook,
 set `HARADIBOTS_LLAMA_BIN` to its `llama-completion`, and use a GGUF repository such
-as `ggml-org/tiny-llamas`. HaradiBots selects one compatible GGUF file,
+as `ggml-org/tiny-llamas`. HaradiBots Quanta selects one compatible GGUF file,
 downloads it into the sandbox cache, reads its header metadata, and passes the
 resolved local file—not the repository name—to the worker.
 
