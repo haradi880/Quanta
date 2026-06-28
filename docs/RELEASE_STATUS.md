@@ -10,7 +10,7 @@ static inspection alone are labeled separately.
 |---|---|---|
 | v3.1 contracts and authenticated lifecycle | Passed | Strict schema, FSM, auth, and lifecycle tests |
 | CPU GGUF inference | Passed | Bundled `llama-completion` generated a real tiny-model continuation through `GGUFWorker` |
-| CUDA GGUF inference | External verification required | Pinned CUDA 12.4 executable/runtime and EULA are bundled and loadable; current host has no NVIDIA driver or `nvidia-smi` for real offload |
+| CUDA GGUF inference | External verification required | Pinned CUDA 12.4 executable/runtime and EULA are bundled; run `build/verify_cuda_release.ps1` on a Windows NVIDIA host to prove selection and layer offload |
 | Full-precision conversion/quantization | Passed | Bundled quantizer converted F32 GGUF (93.11 MiB) to Q4_0 (17.50 MiB) |
 | Three-domain perplexity | Passed | Real logic, retrieval, and code reference/candidate evaluation |
 | Golden-prompt reporting | Passed | Real golden item emitted alongside composite scoring |

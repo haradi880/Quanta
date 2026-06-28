@@ -83,3 +83,17 @@ are not prerequisites for the standalone Fat Binary.
 The current evidence and the two outstanding standalone external checks are
 tracked in `docs/RELEASE_STATUS.md`. Passing CI or building on the development
 host does not substitute for the clean-machine offline step.
+
+## NVIDIA CUDA acceptance
+
+On a Windows machine with an NVIDIA driver, run:
+
+```powershell
+.\build\verify_cuda_release.ps1 `
+  -DistributionPath .\dist\Quanta `
+  -ModelPath C:\Models\acceptance.gguf
+```
+
+This gate fails if Quanta falls back to the CPU runtime. It requires the
+packaged `vendor\cuda` executable, a `llama.cpp CUDA` strategy, explicit
+CUDA/layer-offload output, clean teardown, and final `IDLE/complete`.

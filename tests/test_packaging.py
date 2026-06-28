@@ -131,6 +131,9 @@ def test_packaging_manifests_are_offline_and_one_dir():
     offline_verifier = (
         root / "build" / "verify_offline_release.ps1"
     ).read_text(encoding="utf-8")
+    cuda_verifier = (
+        root / "build" / "verify_cuda_release.ps1"
+    ).read_text(encoding="utf-8")
 
     assert "COLLECT(" in spec
     assert "onefile" not in spec.lower()
@@ -149,3 +152,7 @@ def test_packaging_manifests_are_offline_and_one_dir():
     assert '"forced_kill_count"' in offline_verifier
     assert '"IDLE"' in offline_verifier
     assert "Get-Process" in offline_verifier
+    assert "nvidia-smi" in cuda_verifier
+    assert "vendor[\\\\/]cuda" in cuda_verifier
+    assert "llama\\.cpp CUDA" in cuda_verifier
+    assert "layers\\s+to\\s+GPU" in cuda_verifier

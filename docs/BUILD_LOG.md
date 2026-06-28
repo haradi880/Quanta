@@ -896,3 +896,12 @@ None.
 - Every action reference is pinned to its immutable release commit SHA rather
   than a mutable major tag, while an adjacent comment preserves the reviewed
   release version.
+
+## 2026-06-28 — Strict CUDA hardware acceptance harness
+
+- Added `build/verify_cuda_release.ps1` for execution on a Windows NVIDIA host.
+- The harness rejects missing `nvidia-smi`, CPU runtime fallback, a non-CUDA
+  strategy, and inference logs without explicit CUDA device or layer-offload
+  evidence. It also requires clean teardown and final `IDLE/complete`.
+- The script parses successfully and its release-contract assertions pass.
+  It cannot be marked externally verified on this CPU-only host.
