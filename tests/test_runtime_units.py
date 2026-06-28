@@ -31,11 +31,11 @@ def test_native_runtime_preserves_explicit_environment(tmp_path, monkeypatch):
 def test_native_runtime_uses_frozen_vendor_root(tmp_path, monkeypatch):
     vendor = tmp_path / "vendor"
     vendor.mkdir()
-    binary = vendor / "redis-server.exe"
+    binary = vendor / "GarnetServer.exe"
     binary.write_bytes(b"tool")
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
-    monkeypatch.delenv("HARADIBOTS_REDIS_BIN", raising=False)
+    monkeypatch.delenv("HARADIBOTS_GARNET_BIN", raising=False)
 
     configured = configure_native_runtime()
 
-    assert configured["HARADIBOTS_REDIS_BIN"] == str(binary.resolve())
+    assert configured["HARADIBOTS_GARNET_BIN"] == str(binary.resolve())

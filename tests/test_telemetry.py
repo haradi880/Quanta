@@ -192,5 +192,5 @@ def test_local_redis_requires_bundled_binary(monkeypatch, tmp_path):
         port=6398,
     )
 
-    with pytest.raises(FileNotFoundError, match="bundled Redis"):
+    with pytest.raises(FileNotFoundError, match="bundled Garnet"):
         asyncio.run(manager.start(timeout_seconds=0.1))

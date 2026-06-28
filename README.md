@@ -41,9 +41,9 @@ python -m pytest tests -m "not integration" --cov=core --cov-branch --cov-fail-u
 
 The standalone one-directory build is fail-closed. Populate `build/vendor`
 with `build/populate_windows_vendor.ps1`. It retrieves the pinned official
-llama.cpp release; the release owner must provide a licensed native
-Redis-compatible runtime and explicitly approve its redistribution. See
-`build/vendor/README.md` for the exact command. Then run:
+llama.cpp release and builds pinned Microsoft Garnet as a native Windows,
+self-contained .NET RESP server. See `build/vendor/README.md` for the exact
+contents. Then run:
 
 ```powershell
 .\build\build_windows.ps1 -Python .\.venv\Scripts\python.exe -Clean
@@ -51,8 +51,9 @@ Redis-compatible runtime and explicitly approve its redistribution. See
 
 The script verifies every native asset before PyInstaller runs and smoke-tests
 `dist\HaradiBots\HaradiBots.exe --help` plus `doctor --json`. The doctor probes
-the llama.cpp executables, converter source tree, and a complete local Redis
-start/PING/stop cycle. Filenames alone are not accepted as release evidence.
+the llama.cpp executables, converter source tree, and a complete local Garnet
+start plus `PING`/`HSET`/`HGETALL`/`SCAN`/stop cycle. Filenames alone are not
+accepted as release evidence.
 
 ## Local authentication setup
 
@@ -139,7 +140,7 @@ Poor results require confirmation; critical results are quarantined.
 
 Job metadata is stored under
 `$HARADIBOTS_CACHE_ROOT/db/haradibots.sqlite3`. High-frequency metrics use the
-local Redis process bundled with the Enterprise Fat Binary:
+local Garnet RESP process bundled with the Enterprise Fat Binary:
 
 ```python
 from telemetry.redis_pipeline import write_tick
@@ -147,7 +148,7 @@ from telemetry.redis_pipeline import write_tick
 write_tick("job-id", "node-id", {"vram_pct": 72, "gpu_temp_c": 65})
 ```
 
-`write_tick()` schedules Redis work and returns immediately. It must be called
+`write_tick()` schedules RESP writes to Garnet and returns immediately. It must be called
 from a running asyncio event loop. Durable aggregate export is disabled by
 default. Team/server deployments may explicitly set
 `HARADIBOTS_TELEMETRY_SINK=prometheus` or `postgresql`; PostgreSQL additionally
