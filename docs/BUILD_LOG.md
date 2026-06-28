@@ -510,3 +510,33 @@ None.
 - Local credentials are reused, validate successfully, and never appear as plaintext in `credentials.json`.
 - CLI and notebook envelope tests require no environment or notebook secret.
 - `python -m pytest tests -q` returned `28 passed`.
+## 2026-06-28 — Production Model-Flow Repair
+
+### Changes
+
+- Added conservative parameter-count planning when Hub metadata omits the count.
+- Added format-aware GGUF selection, storage checks, sandboxed download, and GGUF v2/v3 header parsing.
+- Connected repository acquisition to Orchestrator execution so GGUF workers receive a real local model path.
+- Forced pre-quantized GGUF repositories through llama.cpp instead of hardware-only AWQ/vLLM routing.
+- Added early actionable rejection for non-GGUF repositories routed to llama.cpp.
+
+### Verification
+
+- Live `sshleifer/tiny-gpt2` inspection now produces a conservative planning count instead of `None`.
+- Live `ggml-org/tiny-llamas` resolution selected and downloaded `stories15M-q4_0.gguf` (19,077,344 bytes).
+- The real GGUF header returned 6 layers, hidden size 288, 6 attention heads, context 128, and vocabulary 32,000.
+- Artifact unit tests cover target selection, projection exclusion, incompatibility rejection, metadata parsing, and parameter estimation.
+- A simulated full Orchestrator lifecycle proved the acquired GGUF path and source quantization format reach the worker and complete teardown.
+
+### Remaining production gate
+
+- This Windows host has no CMake/compiler toolchain, so genuine llama.cpp inference was not claimed locally.
+- Kaggle/Colab must build llama.cpp CUDA and run the documented tiny GGUF smoke test.
+- Phase 7 perplexity validation is not yet wired to the live GGUF backend; successful inference alone does not close production validation.
+
+### Reality-aligned architecture correction
+
+- Added `docs/ARCHITECTURE_V3.1_REALITY_DRAFT.md` and its DOCX rendering.
+- Documented the missing operation semantics and source-versus-candidate distinction in v3.0.
+- Defined operation-specific state paths and a fail-closed production acceptance gate.
+- Tightened the current Orchestrator so a backend-specific output dictionary can no longer masquerade as `ValidationResult`; artifact delivery is blocked unless strict original-versus-quantized validation is available.

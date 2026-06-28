@@ -15,6 +15,7 @@ from uuid import UUID
 import psutil
 
 from core.accelerator import select_strategy
+from core.artifacts import acquire_gguf_artifact, inspect_gguf_metadata
 from core.auth_middleware import authenticate
 from core.hf_inspector import inspect_repo
 from core.profiler import snapshot
@@ -26,6 +27,7 @@ from core.schemas import (
     ProgressEvent,
     SCHEMA_VERSION,
     TeardownComplete,
+    ValidationResult,
 )
 
 
@@ -386,10 +388,17 @@ class Orchestrator:
         if inspect.isawaitable(result):
             result = await result
         if hasattr(result, "model_dump"):
-            return result.model_dump(mode="json")
-        if isinstance(result, dict):
-            return result
-        raise RuntimeError("worker validate() returned an unsupported value")
+            result = result.model_dump(mode="python")
+        if not isinstance(result, dict):
+            raise RuntimeError("worker validate() returned an unsupported value")
+        try:
+            validated = ValidationResult.model_validate(result)
+        except Exception as exc:
+            raise RuntimeError(
+                "backend did not produce the required original-vs-quantized "
+                "ValidationResult; artifact delivery is blocked"
+            ) from exc
+        return validated.model_dump(mode="json")
 
     async def process_job(
         self,
@@ -459,6 +468,22 @@ class Orchestrator:
                     "model parameter count is unavailable; strategy cannot be planned"
                 )
 
+            acquired_model_path = None
+            if any(
+                filename.lower().endswith(".gguf")
+                for filename in model_meta["file_manifest"]
+            ):
+                acquired_model_path = await acquire_gguf_artifact(
+                    repo_id,
+                    model_meta,
+                    str(model_meta.get("quant_format") or "GGUF"),
+                    revision=envelope.model_source.revision,
+                )
+                gguf_metadata = inspect_gguf_metadata(acquired_model_path)
+                for field_name, value in gguf_metadata.items():
+                    if value is not None:
+                        model_meta[field_name] = value
+
             strategy = select_strategy(
                 hardware,
                 model_meta,
@@ -469,6 +494,22 @@ class Orchestrator:
                     else None
                 ),
             )
+            if acquired_model_path is not None:
+                strategy["format"] = str(
+                    model_meta.get("quant_format") or strategy["format"]
+                )
+                strategy["backend"] = (
+                    "llama.cpp CUDA"
+                    if int(hardware.get("gpu_count", 0)) > 0
+                    else "llama.cpp"
+                )
+            elif "llama.cpp" in str(strategy["backend"]).lower():
+                acquired_model_path = await acquire_gguf_artifact(
+                    repo_id,
+                    model_meta,
+                    str(strategy["format"]),
+                    revision=envelope.model_source.revision,
+                )
             if envelope.cluster_config is not None:
                 state = self._transition_job(
                     envelope.job_id,
@@ -483,6 +524,13 @@ class Orchestrator:
 
             state = self._transition_job(envelope.job_id, "plan_complete")
             execution_strategy = self._execution_strategy(envelope, strategy)
+            if acquired_model_path is not None:
+                execution_strategy["model_path"] = acquired_model_path
+                execution_strategy.setdefault(
+                    "prompt",
+                    "Reply with the single word OK.",
+                )
+                execution_strategy.setdefault("max_tokens", 16)
             if not self.worker_handles(envelope.job_id):
                 self._create_and_register_worker(
                     envelope,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import logging
+import math
 from typing import Any
 from urllib.parse import quote
 
@@ -208,6 +209,31 @@ def _quant_bits(config: dict[str, Any], quant_format: str | None) -> float | Non
     return None
 
 
+def _estimate_parameter_count(
+    file_manifest: dict[str, int],
+    quant_bits: float | None,
+) -> int | None:
+    """Return a conservative planning estimate when Hub metadata omits a count."""
+
+    weight_files = {
+        name: size
+        for name, size in file_manifest.items()
+        if name.lower().endswith(WEIGHT_SUFFIXES) and size > 0
+        and "mmproj" not in name.lower()
+    }
+    if not weight_files:
+        return None
+    total_bytes = sum(weight_files.values())
+    if all(name.lower().endswith(".bin") for name in weight_files):
+        bits_per_parameter = 32.0
+    elif all(name.lower().endswith(".gguf") for name in weight_files):
+        bits_per_parameter = quant_bits or 8.0
+    else:
+        bits_per_parameter = 16.0
+    # Serialization metadata makes this a safe upper-bound planning estimate.
+    return max(int(math.ceil(total_bytes * 8.0 / bits_per_parameter)), 1)
+
+
 def _validated_profile(
     repo_id: str,
     values: dict[str, Any],
@@ -373,6 +399,16 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
         config,
         list(file_manifest),
     )
+    quant_bits = _quant_bits(config, quant_format)
+    if parameter_count is None:
+        parameter_count = _estimate_parameter_count(file_manifest, quant_bits)
+        if parameter_count is not None:
+            LOGGER.warning(
+                "repository '%s' omits parameter_count; using conservative "
+                "weight-size estimate %d",
+                repo_id,
+                parameter_count,
+            )
     total_weight_bytes = sum(
         size
         for filename, size in file_manifest.items()
@@ -407,6 +443,6 @@ async def inspect_repo(repo_id: str) -> dict[str, Any]:
         ),
         "is_prequantized": is_prequantized,
         "quant_format": quant_format,
-        "quant_bits": _quant_bits(config, quant_format),
+        "quant_bits": quant_bits,
         "model_family": model_family,
     })

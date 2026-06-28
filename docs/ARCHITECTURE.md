@@ -166,6 +166,23 @@ online budgets deduct system and history tokens exactly; offline budgets also
 deduct 5% of their current total sequence length. Fewer than 256 available
 generation tokens produces a structured breakdown instead of inference.
 
+## Model artifact lifecycle
+
+Repository inspection and execution are joined by `core/artifacts.py`.
+Hardware planning may use a conservative weight-size parameter estimate when
+the Hub omits `parameter_count`. GGUF repositories are resolved to one
+non-projection model file compatible with the target format, checked against
+free storage with a 10% reserve, downloaded only under
+`$HARADIBOTS_CACHE_ROOT/models`, and parsed directly for architecture, layer,
+attention, vocabulary, and context metadata. Pre-quantized GGUF forces the
+llama.cpp backend instead of being routed to AWQ/vLLM based only on hardware.
+A non-GGUF repository selected for llama.cpp is rejected before worker launch
+with an actionable compatibility error.
+
+This lifecycle is required before the optional cluster layer. Real backend
+validation must still prove llama.cpp inference and Phase 7 quality scoring on
+the same artifact before the single-node production gate is considered closed.
+
 ## Environment variables
 
 - `HARADIBOTS_JWT_SECRET` is required when validating JWT credentials. It must
