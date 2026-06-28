@@ -870,3 +870,20 @@ None.
 - Final local regression evidence after dual-runtime integration: 159 passed,
   one optional integration test skipped, and 80.30% branch-aware core
   coverage.
+
+## 2026-06-28 — Real local Ray lifecycle
+
+- Pinned the optional cluster dependency to tested Ray 2.55.1.
+- Added an explicit `HARADIBOTS_RAY_ADDRESS=local` integration mode. CPU-only
+  actors are permitted only when the strategy carries the dedicated
+  `cluster_test_cpu` flag; production Ray actors still reject zero-GPU
+  allocation.
+- Production placement remains `STRICT_SPREAD`. The single-node integration
+  path uses `STRICT_PACK`, and every placement wait now has a hard timeout
+  that removes the group and shuts down an owned runtime on failure.
+- Real evidence on Windows: Ray started locally, two placement bundles and
+  actors became ready, two `cluster_node_status` results were collected,
+  actors and placement group were terminated, and the owned Ray runtime shut
+  down. The integration test passed in 22.26 seconds.
+- `pip-audit -r requirements-cluster.txt` reported no known vulnerabilities;
+  the cluster dependency audit is now also enforced in GitHub Actions.

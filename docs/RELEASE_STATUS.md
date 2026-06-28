@@ -24,7 +24,7 @@ static inspection alone are labeled separately.
 | Clean-machine offline execution | External verification required | Build-host local-GGUF lifecycle passes; run `build/verify_offline_release.ps1` on a second disconnected Windows machine |
 | Security/dependency checks | Passed and CI-enforced | pip-audit, Bandit medium/high scan, and tracked-production secret signatures |
 | Core branch coverage | Passed | 80% minimum enforced locally and in CI |
-| Optional Ray/SLURM/Kubernetes | Foundation only | Provisioning/readiness adapters tested; distributed execution and artifact return are not integrated |
+| Optional Ray/SLURM/Kubernetes | Foundation only | Real local Ray placement/actor collection/teardown passed; SLURM/K8s contracts are mocked; distributed GPU execution and artifact return are not integrated |
 
 No release tag should be created while any standalone-required row says
 “External verification required.” Optional cluster rows do not block the

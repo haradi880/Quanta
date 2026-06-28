@@ -191,7 +191,7 @@ def test_ray_submit_collect_and_terminate_with_scheduler_contract(monkeypatch):
         def init(self, **kwargs):
             self.initialized = True
 
-        def get(self, value):
+        def get(self, value, timeout=None):
             return value
 
         def remote(self, **resources):
@@ -221,6 +221,29 @@ def test_ray_submit_collect_and_terminate_with_scheduler_contract(monkeypatch):
     assert all(event.payload["status"] == "ready" for event in events)
     asyncio.run(terminate(handle))
     assert len(killed) == 2
+
+
+@pytest.mark.integration
+def test_real_local_ray_placement_collection_and_teardown(monkeypatch):
+    ray = pytest.importorskip("ray")
+    import cluster.ray_manager as manager
+
+    monkeypatch.setenv("HARADIBOTS_RAY_ADDRESS", "local")
+    handle = manager.submit_job(
+        {
+            "tp_degree": 2,
+            "gpus_per_actor": 0,
+            "cluster_test_cpu": True,
+        },
+        uuid4(),
+    )
+    try:
+        events = asyncio.run(_collect_cluster(handle))
+        assert [event.payload["shard_index"] for event in events] == [0, 1]
+        assert all(event.payload["status"] == "ready" for event in events)
+    finally:
+        asyncio.run(manager.terminate(handle))
+    assert ray.is_initialized() is False
 
 
 async def _collect_cluster(handle):

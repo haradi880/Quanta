@@ -39,6 +39,7 @@ jobs:
           python-version: "3.11"
       - run: pip install -r requirements-notebook.txt pip-audit bandit
       - run: pip-audit -r requirements-notebook.txt
+      - run: pip-audit -r requirements-cluster.txt
       - run: bandit -r core cli cluster engines notebooks telemetry ui -x tests -ll
       - run: python scripts/check_tracked_secrets.py
 

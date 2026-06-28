@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
 from typing import Any, AsyncIterator
 from uuid import UUID
 
@@ -16,6 +17,8 @@ class RayJobHandle:
     placement_group: Any
     actors: list[Any]
     ray: Any
+    remove_placement_group: Any
+    owns_runtime: bool = False
 
 
 def _load_ray():
@@ -29,15 +32,44 @@ def _load_ray():
 
 
 def submit_job(strategy_config: dict[str, Any], job_id: UUID) -> RayJobHandle:
-    ray, placement_group, _remove_placement_group, scheduling_strategy = _load_ray()
+    ray, placement_group, remove_placement_group, scheduling_strategy = _load_ray()
+    owns_runtime = False
     if not ray.is_initialized():
-        ray.init(address="auto", ignore_reinit_error=True)
+        address = os.environ.get("HARADIBOTS_RAY_ADDRESS", "auto")
+        if address == "local":
+            ray.init(
+                include_dashboard=False,
+                ignore_reinit_error=True,
+            )
+            owns_runtime = True
+        else:
+            ray.init(address=address, ignore_reinit_error=True)
     shard_count = max(int(strategy_config.get("tp_degree", 1)), 1)
-    bundles = [{"CPU": 1, "GPU": 1} for _ in range(shard_count)]
-    group = placement_group(bundles, strategy="STRICT_SPREAD")
-    ray.get(group.ready())
+    gpu_per_actor = float(strategy_config.get("gpus_per_actor", 1))
+    if gpu_per_actor <= 0 and not strategy_config.get("cluster_test_cpu", False):
+        raise ValueError("production Ray actors require a positive GPU allocation")
+    bundle = {"CPU": 1}
+    if gpu_per_actor > 0:
+        bundle["GPU"] = gpu_per_actor
+    bundles = [dict(bundle) for _ in range(shard_count)]
+    placement_strategy = (
+        "STRICT_PACK"
+        if strategy_config.get("cluster_test_cpu", False)
+        else "STRICT_SPREAD"
+    )
+    group = placement_group(bundles, strategy=placement_strategy)
+    try:
+        ray.get(
+            group.ready(),
+            timeout=float(strategy_config.get("placement_timeout_seconds", 30)),
+        )
+    except Exception as exc:
+        remove_placement_group(group)
+        if owns_runtime:
+            ray.shutdown()
+        raise RuntimeError("Ray placement group did not become ready") from exc
 
-    @ray.remote(num_cpus=1, num_gpus=1)
+    @ray.remote(num_cpus=1, num_gpus=max(gpu_per_actor, 0))
     class ModelShard:
         def __init__(self, shard_index, config):
             self.shard_index = shard_index
@@ -66,6 +98,8 @@ def submit_job(strategy_config: dict[str, Any], job_id: UUID) -> RayJobHandle:
         placement_group=group,
         actors=actors,
         ray=ray,
+        remove_placement_group=remove_placement_group,
+        owns_runtime=owns_runtime,
     )
 
 
@@ -89,9 +123,6 @@ async def terminate(handle: RayJobHandle) -> None:
             await actor.terminate.remote()
         finally:
             handle.ray.kill(actor, no_restart=True)
-    try:
-        from ray.util.placement_group import remove_placement_group
-
-        remove_placement_group(handle.placement_group)
-    except ImportError:
-        pass
+    handle.remove_placement_group(handle.placement_group)
+    if handle.owns_runtime:
+        handle.ray.shutdown()
