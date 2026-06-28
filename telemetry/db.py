@@ -83,6 +83,54 @@ def insert_job(
     return row
 
 
+def upsert_job(
+    engine,
+    *,
+    job_id: str,
+    model_source: str,
+    output_format: str,
+    state: str,
+    started_at: datetime | None = None,
+    completed_at: datetime | None = None,
+) -> Job:
+    """Create or update durable job metadata without duplicating a job ID."""
+
+    with Session(engine) as session:
+        row = session.get(Job, job_id)
+        if row is None:
+            row = Job(
+                job_id=job_id,
+                model_source=model_source,
+                output_format=output_format,
+                state=state,
+                started_at=started_at or datetime.now(timezone.utc),
+                completed_at=completed_at,
+            )
+            session.add(row)
+        else:
+            row.model_source = model_source
+            row.output_format = output_format
+            row.state = state
+            row.completed_at = completed_at
+        session.commit()
+        session.refresh(row)
+        session.expunge(row)
+        return row
+
+
+def get_validation_result(engine, job_id: str) -> dict[str, Any] | None:
+    with Session(engine) as session:
+        row = session.get(ValidationResultRecord, job_id)
+        if row is None:
+            return None
+        return {
+            "job_id": row.job_id,
+            "composite_delta": row.composite_delta,
+            "severity": row.severity,
+            "per_domain": json.loads(row.per_domain),
+        }
+
+
 def get_job(engine, job_id: str) -> Job | None:
     with Session(engine) as session:
         row = session.get(Job, job_id)

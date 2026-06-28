@@ -18,10 +18,15 @@ from core.schemas import (
     InterfaceType,
     JobEnvelope,
     JobMode,
+    JobOperation,
     ModelSource,
     ProgressEvent,
     SystemPrompt,
+    TargetConfig,
+    ValidationPolicy,
+    ValidationResult,
 )
+from engines.gguf_worker import GGUFWorker
 
 
 def _gguf_string(value):
@@ -98,6 +103,56 @@ def test_weight_size_parameter_fallback_is_conservative():
     assert _estimate_parameter_count({"model-Q4_0.gguf": 500}, 4) == 1000
 
 
+def test_gguf_quantization_commands_support_conversion_and_requantization(
+    tmp_path,
+):
+    converter = tmp_path / "convert.py"
+    quantizer = tmp_path / "llama-quantize"
+    converter.write_text("# converter", encoding="utf-8")
+    quantizer.write_bytes(b"binary")
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    output = tmp_path / "output" / "model.gguf"
+    worker = GGUFWorker(uuid4())
+    common = {
+        "work_path": str(tmp_path / "work"),
+        "output_path": str(output),
+        "format": "Q4_K_M",
+        "convert_script": str(converter),
+        "quantize_binary": str(quantizer),
+    }
+
+    convert, quantize, resolved = worker._quantization_commands(
+        {**common, "model_path": str(source_dir)}
+    )
+    assert convert is not None
+    assert "--outtype" in convert
+    assert quantize[-1] == "Q4_K_M"
+    assert resolved == str(output.resolve())
+
+    existing = tmp_path / "existing.gguf"
+    existing.write_bytes(b"GGUF")
+    convert, quantize, _ = worker._quantization_commands(
+        {**common, "model_path": str(existing)}
+    )
+    assert convert is None
+    assert quantize[0] == str(quantizer.resolve())
+    assert quantize[1] == str(existing.resolve())
+
+
+def test_quantization_target_controls_backend_not_hardware_recommendation():
+    strategy = {"format": "AWQ_INT4", "backend": "AutoAWQ"}
+
+    Orchestrator._apply_target_backend(strategy, "Q4_K_M", gpu_count=2)
+    assert strategy == {"format": "Q4_K_M", "backend": "llama.cpp CUDA"}
+
+    Orchestrator._apply_target_backend(strategy, "EXL2_4.0BPW", gpu_count=2)
+    assert strategy["backend"] == "ExLlamaV2"
+
+    with pytest.raises(RuntimeError, match="no production quantization backend"):
+        Orchestrator._apply_target_backend(strategy, "GPTQ_INT4", gpu_count=1)
+
+
 def test_orchestrator_passes_acquired_gguf_path_to_worker(tmp_path, monkeypatch):
     import core.orchestrator as module
 
@@ -112,7 +167,7 @@ def test_orchestrator_passes_acquired_gguf_path_to_worker(tmp_path, monkeypatch)
         async def execute(self, strategy):
             captured.update(strategy)
             yield ProgressEvent(
-                schema_version="3.0",
+                schema_version="3.1",
                 job_id=job_id,
                 event_type=EventType.QUANTIZATION_PROGRESS,
                 timestamp_utc=datetime.now(timezone.utc),
@@ -210,7 +265,9 @@ def test_orchestrator_passes_acquired_gguf_path_to_worker(tmp_path, monkeypatch)
         auth=AuthBlock(api_key="internal"),
         interface=InterfaceType.CLI,
         mode=JobMode.AUTO,
-        model_source=ModelSource(repo_id="owner/model-gguf"),
+        operation=JobOperation.INFER,
+        source_model=ModelSource(repo_id="owner/model-gguf"),
+        validation_policy=ValidationPolicy(),
         system_prompt=SystemPrompt(preset_id="default"),
         callbacks=CallbackConfig(),
     )
@@ -242,13 +299,136 @@ def test_orchestrator_blocks_non_validation_result():
         auth=AuthBlock(api_key="internal"),
         interface=InterfaceType.CLI,
         mode=JobMode.AUTO,
-        model_source=ModelSource(repo_id="owner/model"),
+        operation=JobOperation.INFER,
+        source_model=ModelSource(repo_id="owner/model"),
+        validation_policy=ValidationPolicy(),
         system_prompt=SystemPrompt(preset_id="default"),
         callbacks=CallbackConfig(),
     )
 
     with pytest.raises(RuntimeError, match="artifact delivery is blocked"):
         asyncio.run(orchestrator._validate_registered_workers(envelope))
+
+
+def test_quantization_output_is_handed_to_strict_validator(tmp_path, monkeypatch):
+    import asyncio
+    import core.orchestrator as module
+
+    job_id = uuid4()
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    artifact = tmp_path / "candidate.Q4_K_M.gguf"
+    captured = {}
+
+    class Worker:
+        process = None
+
+        async def execute(self, strategy):
+            artifact.write_bytes(b"GGUF artifact")
+            yield ProgressEvent(
+                schema_version="3.1",
+                job_id=job_id,
+                event_type=EventType.QUANTIZATION_PROGRESS,
+                timestamp_utc=datetime.now(timezone.utc),
+                payload={"status": "complete", "output_path": str(artifact)},
+                telemetry={},
+            )
+
+        async def terminate(self):
+            return None
+
+    monkeypatch.setattr(module, "authenticate", lambda envelope: {"subject": "test"})
+    monkeypatch.setattr(
+        module,
+        "snapshot",
+        lambda: {
+            "profile_id": uuid4(),
+            "timestamp_utc": datetime.now(timezone.utc),
+            "gpu_count": 0,
+            "gpu_uuids": [],
+            "gpus": [],
+            "cpu": {
+                "ram_total_gb": 16,
+                "ram_available_gb": 12,
+                "physical_cores": 4,
+                "p_core_ids": [],
+                "e_core_ids": [],
+                "core_topology": "unknown",
+                "p_core_clock_ghz": None,
+                "e_core_clock_ghz": None,
+                "isa_flags": ["AVX2"],
+                "degraded_topology_detection": True,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "inspect_repo",
+        lambda repo_id: _async_value(
+            {
+                "repo_exists": True,
+                "parameter_count": 15_000_000,
+                "file_manifest": {"model.safetensors": 30_000_000},
+                "num_layers": 6,
+                "num_attention_heads": 6,
+                "num_key_value_heads": 6,
+                "hidden_size": 288,
+                "max_position_embeddings": 128,
+                "is_prequantized": False,
+                "quant_format": None,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "acquire_source_snapshot",
+        lambda *args, **kwargs: _async_value(str(source_dir)),
+    )
+    orchestrator = Orchestrator(teardown_grace_seconds=0)
+    monkeypatch.setattr(
+        orchestrator,
+        "_create_and_register_worker",
+        lambda envelope, strategy: (
+            orchestrator.register_worker(envelope.job_id, worker := Worker()) or worker
+        ),
+    )
+
+    async def fake_validation(validation_envelope):
+        captured["candidate"] = validation_envelope.candidate_artifact.local_path
+        domain = DomainValidationResult(
+            original_perplexity=10,
+            quantized_perplexity=10.01,
+            delta=0.01,
+        )
+        return ValidationResult(
+            per_domain={"logic": domain, "retrieval": domain, "code": domain},
+            composite_delta=0.01,
+            severity_tier="excellent",
+        )
+
+    from core.schemas import DomainValidationResult
+
+    monkeypatch.setattr(orchestrator, "_run_validation_operation", fake_validation)
+    envelope = JobEnvelope(
+        job_id=job_id,
+        auth=AuthBlock(api_key="internal"),
+        interface=InterfaceType.CLI,
+        mode=JobMode.AUTO,
+        operation=JobOperation.QUANTIZE,
+        source_model=ModelSource(repo_id="owner/reference"),
+        target=TargetConfig(format="Q4_K_M"),
+        validation_policy=ValidationPolicy(),
+        system_prompt=SystemPrompt(preset_id="default"),
+        callbacks=CallbackConfig(),
+    )
+
+    events = asyncio.run(_collect_events(orchestrator, envelope))
+    assert captured["candidate"] == str(artifact)
+    assert events[-1].payload["status"] == "complete"
+
+
+async def _collect_events(orchestrator, envelope):
+    return [event async for event in orchestrator.process_job(envelope)]
 
 
 async def _async_value(value):

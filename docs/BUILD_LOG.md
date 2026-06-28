@@ -540,3 +540,111 @@ None.
 - Documented the missing operation semantics and source-versus-candidate distinction in v3.0.
 - Defined operation-specific state paths and a fail-closed production acceptance gate.
 - Tightened the current Orchestrator so a backend-specific output dictionary can no longer masquerade as `ValidationResult`; artifact delivery is blocked unless strict original-versus-quantized validation is available.
+## 2026-06-28 — v3.1 Operation Contract Migration
+
+### Changes
+
+- Bumped strict wire contracts from schema 3.0 to 3.1.
+- Replaced ambiguous `model_source` with required `operation`, `source_model`, `candidate_artifact`, `target`, and `validation_policy` fields.
+- Added operation-specific validation: quantize requires a target; validate requires a candidate; required golden validation cannot be empty.
+- Added distinct model-inspection and inference progress events.
+- Added direct `inspect → teardown` and `infer → teardown` state paths.
+- Kept quantization on the mandatory validation path.
+- Migrated CLI, API payload handling, GUI, notebook adapter, Orchestrator, and tests together.
+
+### Verification
+
+- v3.0 event literals are rejected by the strict v3.1 contracts.
+- Invalid quantize and validate envelopes fail schema construction.
+- All automated tests pass after the migration.
+## 2026-06-28 — Genuine Reference/Candidate Validation
+
+### Changes
+
+- Added lazy Transformers and subprocess-isolated llama-perplexity evaluators.
+- Added async policy-selected logic, retrieval, code, and golden-prompt validation.
+- Renormalized weights when a validation policy selects fewer than three domains.
+- Connected v3.1 `validate` to reference/candidate resolution, strict `ValidationResult`, evaluator cleanup, SQLite job metadata, and validation-summary persistence.
+- Critical validation remains fail-closed and enters the error/teardown path.
+
+### Verification
+
+- Fixed evaluators prove absolute PPL deltas and weighted severity behavior.
+- Golden prompts remain separate from the composite.
+- llama-perplexity output parsing accepts its final PPL line.
+- An Orchestrator integration test persists a strict three-domain result and finishes through teardown.
+## 2026-06-28 — Quantization Artifact Handoff
+
+### Changes
+
+- Added sandboxed full-precision source snapshot acquisition for conversion.
+- Added llama.cpp `convert_hf_to_gguf.py` plus `llama-quantize` subprocess stages.
+- Added safe GGUF-to-GGUF requantization for conversion-table-approved sources.
+- Made the requested target format, not hardware alone, select the quantization backend.
+- Captured the worker's produced artifact path and passed it into the strict reference/candidate validator.
+- Blocked successful completion when a worker emits no artifact or validation quarantines it.
+
+### Verification
+
+- GGUF command tests cover full-precision conversion and direct requantization.
+- Backend-routing tests prove Q4, AWQ, and EXL2 targets select compatible workers and unsupported GPTQ fails explicitly.
+- A full simulated quantization lifecycle proves the emitted artifact becomes the validation candidate before teardown.
+## 2026-06-28 — Fault Tolerance, Purge, and Local Redis
+
+### Changes
+
+- Implemented all five degradation policy transformations.
+- Added three OOM retries with 50% batch reduction, hardware-aware CPU fallback, and emergency abort preserving partial artifacts.
+- Implemented the five-phase purge sequence with unsafe-root rejection and no symlink traversal.
+- Added exact CLI and GUI double confirmation; only uppercase `CONFIRM` executes purge.
+- Added bundled local Redis process ownership with loopback binding, protected mode, readiness probing, hidden Windows launch, and graceful stop.
+
+### Verification
+
+- OOM simulation emits Tier 3 three times, then replans to Tier 4 with P-core affinity.
+- Purge tests prove workers are harvested while files/tables still exist, then tables are dropped, pools close, files delete, and pristine placeholders return.
+- Dangerous home/current/root paths are rejected.
+- CLI confirmation tests prove lowercase confirmation performs no deletion.
+- Redis tests prove an existing loopback Redis is reused and a missing bundled binary fails clearly.
+## 2026-06-28 — Standalone Packaging and CI Foundations
+
+### Changes
+
+- Added a one-dir PyInstaller specification and executable entry point.
+- Added a fail-closed native bundle verifier for llama.cpp tools and Redis.
+- Added frozen-runtime native tool discovery with no background downloads.
+- Added a non-root NVIDIA CUDA Docker image with health check.
+- Replaced the placeholder import test with a deliberate-bad-import AST linter.
+- Added four-job GitHub Actions CI and explicit development dependencies.
+- Added `DEPLOYMENT.md` with Fat Binary, Docker, and release gates.
+
+### Verification
+
+- Ruff fatal/static checks pass.
+- Import isolation catches a deliberate CLI-to-engine violation.
+- Packaging tests prove incomplete native bundles fail closed and complete fake bundles resolve every runtime variable.
+- PyInstaller manifest is statically verified as one-dir.
+- Docker could not be built locally because this Windows host has no Docker executable; GitHub Actions built it successfully in 2m26s.
+- Measured total coverage is 46.64%, below the required 80%; enforcement is intentionally not yet enabled and production release remains blocked.
+- GitHub Actions passed lint, import isolation, unit tests, and Docker build on PR #2.
+## 2026-06-28 — Optional Cluster Foundations
+
+### Changes
+
+- Added an OpenSSL CA/node certificate provisioning script with server/client EKU and SAN.
+- Added mTLS GPU health probing with a five-second failure bound.
+- Added healthy-GPU-only asymmetric parallelism and queue threshold.
+- Added lazy Ray placement groups, SLURM script/subprocess handling, and Kubernetes Job generation/watch.
+- Added a three-node Ray compose topology with no worker ports and mandatory Ray plus node-health TLS.
+
+### Verification
+
+- A real temporary CA and node certificate were generated and passed `openssl verify`.
+- Unauthenticated/missing-certificate health probing fails closed.
+- Removing one GPU from four yields a degraded three-GPU plan; dropping below two queues the job.
+- SLURM command parsing, Kubernetes GPU/mTLS manifest, compose isolation, and clean missing-Ray behavior pass tests.
+
+### Remaining cluster gate
+
+- No real Ray/SLURM/Kubernetes scheduler is available on this host.
+- Scheduler adapters currently provision and report readiness; model-shard execution and artifact return must be integrated before cluster jobs can be called production-complete.

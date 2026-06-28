@@ -1,0 +1,6 @@
+-r requirements-notebook.txt
+pytest
+pytest-cov
+ruff
+pyinstaller
+python-docx

@@ -65,6 +65,13 @@ Artifact delivery must fail closed unless the required original-versus-candidate
 validation result is produced and schema-valid. A successful subprocess alone
 is not a successful quantization job.
 
+The quantization path acquires conversion inputs under the sandbox cache,
+selects a backend from the requested target format, captures the concrete
+artifact emitted by that worker, and constructs the candidate reference used by
+the strict validation service. llama.cpp conversion is split into isolated
+full-precision conversion and quantization subprocesses. A missing output path,
+empty artifact, unsupported target, or quarantined result prevents success.
+
 ## 3. Required v3.1 Job Envelope additions
 
 The v3.0 fields remain, with these required additions:
@@ -96,6 +103,12 @@ VALIDATE → PERSIST → TEARDOWN → IDLE
 
 AUTHENTICATE → PROFILE → ACQUIRE_REFERENCE → ACQUIRE_CANDIDATE → VALIDATE →
 PERSIST → TEARDOWN → IDLE
+
+The validate path now has concrete evaluator adapters: Transformers evaluates
+canonical repositories in-process with lazy imports, while GGUF evaluation uses
+the separately packaged `llama-perplexity` subprocess. Both evaluators receive
+identical domain text. A validation result is persisted only after strict
+schema validation; critical results fail closed.
 
 ### Infer
 
@@ -158,6 +171,25 @@ Ray, SLURM, Kubernetes, PostgreSQL, remote Prometheus, and mTLS cluster behavior
 remain optional server features. Cluster work must not begin until the
 single-node production gate passes.
 
+The optional cluster foundation now includes certificate provisioning,
+mTLS-only node inventory, healthy-GPU-only planning, and lazy scheduler
+adapters. These components are unit tested, but real scheduler execution and
+artifact return are not externally verified and therefore remain outside the
+production-complete claim.
+
+## 7.1 Fault tolerance and irreversible purge
+
+OOM recovery halves batch size for three retries before rebuilding execution on
+the CPU GGUF backend with detected P-core affinity. CPU-path exhaustion emits
+an emergency stop and preserves partial artifacts.
+
+Purge is ordered as an irreversible transaction boundary: harvest registered
+workers, drop managed SQLite tables while connected, checkpoint and close
+SQLite plus Redis pools/processes, delete cache entries deepest-first without
+following symlinks, then recreate a pristine fixed directory tree. Unsafe roots
+are rejected before any mutation. CLI and GUI both require a warning
+acknowledgement followed by the exact text `CONFIRM`.
+
 ## 8. Production acceptance gate
 
 The project is not production-ready until all of the following are evidenced:
@@ -176,3 +208,16 @@ The project is not production-ready until all of the following are evidenced:
 
 Until then, documentation must use “implemented,” “unit tested,” “integration
 tested,” or “externally verified” precisely and must not use “production-ready.”
+
+## 9. Packaging evidence
+
+The one-dir Fat Binary build has a fail-closed native manifest. llama.cpp CLI,
+quantizer, perplexity evaluator, conversion script, and Redis must exist in the
+vendor tree before a release build. Frozen runtime discovery sets their paths
+without networking. The Docker API runs as a non-root user and exposes only its
+health/API port.
+
+Static packaging tests pass, but this host has neither the native vendor payload
+nor Docker. Therefore offline Fat Binary execution and container startup remain
+unverified release gates. Current measured coverage is 46.64%; the required 80%
+gate is also not yet satisfied.

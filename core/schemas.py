@@ -1,4 +1,4 @@
-"""Version 3.0 contracts shared across HaradiBots tiers."""
+"""Version 3.1 contracts shared across HaradiBots tiers."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-SCHEMA_VERSION = "3.0"
+SCHEMA_VERSION = "3.1"
 
 
 class StrictModel(BaseModel):
@@ -31,6 +31,13 @@ class JobMode(StrEnum):
     MANUAL = "manual"
 
 
+class JobOperation(StrEnum):
+    INSPECT = "inspect"
+    QUANTIZE = "quantize"
+    VALIDATE = "validate"
+    INFER = "infer"
+
+
 class ClusterBackend(StrEnum):
     RAY = "ray"
     SLURM = "slurm"
@@ -39,12 +46,16 @@ class ClusterBackend(StrEnum):
 
 class EventType(StrEnum):
     HARDWARE_PROFILE = "hardware_profile"
+    MODEL_INSPECTION = "model_inspection"
     STRATEGY_SELECTED = "strategy_selected"
     QUANTIZATION_PROGRESS = "quantization_progress"
+    INFERENCE_PROGRESS = "inference_progress"
     VALIDATION_RESULT = "validation_result"
     TELEMETRY_TICK = "telemetry_tick"
     CLUSTER_NODE_STATUS = "cluster_node_status"
     CLUSTER_DEGRADED_WARNING = "cluster_degraded_warning"
+    DEGRADATION_WARNING = "degradation_warning"
+    EMERGENCY_STOP = "emergency_stop"
     TEARDOWN_COMPLETE = "teardown_complete"
     ERROR = "error"
     COMPLETE = "complete"
@@ -73,7 +84,31 @@ class ModelSource(StrictModel):
     @model_validator(mode="after")
     def require_exactly_one_location(self) -> ModelSource:
         if (self.repo_id is None) == (self.local_path is None):
-            raise ValueError("model_source requires exactly one of repo_id or local_path")
+            raise ValueError("model reference requires exactly one of repo_id or local_path")
+        return self
+
+
+class ArtifactReference(ModelSource):
+    format: str | None = None
+
+
+class TargetConfig(StrictModel):
+    format: str
+    output_path: str | None = None
+    quantization: dict[str, Any] = Field(default_factory=dict)
+
+
+class ValidationPolicy(StrictModel):
+    domains: list[Literal["logic", "retrieval", "code"]] = Field(
+        default_factory=lambda: ["logic", "retrieval", "code"]
+    )
+    fail_closed: bool = True
+    require_golden: bool = False
+
+    @model_validator(mode="after")
+    def require_unique_domains(self) -> ValidationPolicy:
+        if not self.domains or len(set(self.domains)) != len(self.domains):
+            raise ValueError("validation domains must be non-empty and unique")
         return self
 
 
@@ -118,12 +153,16 @@ class CallbackConfig(StrictModel):
 class JobEnvelope(StrictModel):
     """Inbound Interface-to-Orchestrator contract from Architecture §1.2."""
 
-    schema_version: str = SCHEMA_VERSION
+    schema_version: Literal["3.1"] = SCHEMA_VERSION
     job_id: UUID
     auth: AuthBlock
     interface: InterfaceType
     mode: JobMode
-    model_source: ModelSource
+    operation: JobOperation
+    source_model: ModelSource
+    candidate_artifact: ArtifactReference | None = None
+    target: TargetConfig | None = None
+    validation_policy: ValidationPolicy
     hardware_override: HardwareOverride | None = None
     quantization_override: QuantizationOverride | None = None
     cluster_config: ClusterConfig | None = None
@@ -132,11 +171,21 @@ class JobEnvelope(StrictModel):
     telemetry_interval_ms: int = Field(default=1000, ge=1)
     callbacks: CallbackConfig
 
+    @model_validator(mode="after")
+    def enforce_operation_requirements(self) -> JobEnvelope:
+        if self.operation is JobOperation.QUANTIZE and self.target is None:
+            raise ValueError("quantize requires target")
+        if self.operation is JobOperation.VALIDATE and self.candidate_artifact is None:
+            raise ValueError("validate requires candidate_artifact")
+        if self.validation_policy.require_golden and not self.validation_prompts:
+            raise ValueError("validation policy requires at least one golden prompt")
+        return self
+
 
 class ProgressEvent(StrictModel):
     """Outbound Orchestrator-to-Interface stream contract from §1.2."""
 
-    schema_version: Literal["3.0"] = SCHEMA_VERSION
+    schema_version: Literal["3.1"] = SCHEMA_VERSION
     job_id: UUID
     event_type: EventType
     timestamp_utc: datetime
@@ -199,7 +248,7 @@ class StrategyConfig(StrictModel):
 
 
 class ErrorEnvelope(StrictModel):
-    schema_version: Literal["3.0"] = SCHEMA_VERSION
+    schema_version: Literal["3.1"] = SCHEMA_VERSION
     job_id: UUID | None = None
     code: int
     error: str
@@ -208,7 +257,7 @@ class ErrorEnvelope(StrictModel):
 
 
 class TeardownComplete(StrictModel):
-    schema_version: Literal["3.0"] = SCHEMA_VERSION
+    schema_version: Literal["3.1"] = SCHEMA_VERSION
     job_id: UUID
     harvested_pids: list[int]
     forced_kill_count: int = Field(ge=0)

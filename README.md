@@ -128,7 +128,7 @@ requires `POSTGRES_URL`.
 
 ## Interfaces
 
-All interfaces construct the same authenticated version 3.0 `JobEnvelope` and
+All interfaces construct the same authenticated version 3.1 `JobEnvelope` and
 consume the same `ProgressEvent` stream:
 
 ```powershell

@@ -18,9 +18,11 @@ from core.schemas import (
     InterfaceType,
     JobEnvelope,
     JobMode,
+    JobOperation,
     ModelSource,
     ProgressEvent,
     SystemPrompt,
+    ValidationPolicy,
 )
 
 
@@ -41,12 +43,14 @@ def read_api_key(secret_name: str = "HARADIBOTS_API_KEY") -> str:
 
 def build_envelope(model: str, mode: str = "auto") -> JobEnvelope:
     return JobEnvelope(
-        schema_version="3.0",
+        schema_version="3.1",
         job_id=uuid4(),
         auth=AuthBlock(api_key=read_api_key()),
         interface=InterfaceType.KAGGLE,
         mode=JobMode(mode),
-        model_source=ModelSource(repo_id=model),
+        operation=JobOperation.INFER,
+        source_model=ModelSource(repo_id=model),
+        validation_policy=ValidationPolicy(),
         hardware_override=None,
         quantization_override=None,
         cluster_config=None,

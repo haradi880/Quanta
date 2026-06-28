@@ -3,11 +3,13 @@ import json
 import time
 from pathlib import Path
 
+import pytest
 from sqlalchemy import inspect
 
 from telemetry.aggregator import TelemetryAggregator, configured_sink
 from telemetry.db import create_database, get_job, insert_job
 from telemetry.redis_pipeline import write_tick
+from telemetry.redis_manager import LocalRedisManager
 from telemetry.warnings import evaluate_tick
 
 
@@ -109,3 +111,38 @@ def test_vram_emergency_aborts():
     assert len(alerts) == 1
     assert alerts[0].level == "emergency"
     assert alerts[0].system_action == "abort"
+
+
+def test_local_redis_reuses_reachable_loopback_process():
+    async def scenario():
+        async def handler(reader, writer):
+            await reader.read(64)
+            writer.write(b"+PONG\r\n")
+            await writer.drain()
+            writer.close()
+
+        server = await asyncio.start_server(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        manager = LocalRedisManager(port=port)
+        try:
+            url = await manager.start()
+            assert url == f"redis://127.0.0.1:{port}/0"
+            assert manager.owns_process is False
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    asyncio.run(scenario())
+
+
+def test_local_redis_requires_bundled_binary(monkeypatch, tmp_path):
+    import telemetry.redis_manager as module
+
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+    manager = LocalRedisManager(
+        binary_path=str(tmp_path / "missing-redis"),
+        port=6398,
+    )
+
+    with pytest.raises(FileNotFoundError, match="bundled Redis"):
+        asyncio.run(manager.start(timeout_seconds=0.1))

@@ -12,15 +12,17 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from core.auth_middleware import ensure_local_api_key
-from core.orchestrator import process_job
+from core.orchestrator import process_job, purge as purge_runtime
 from core.schemas import (
     AuthBlock,
     CallbackConfig,
     InterfaceType,
     JobEnvelope,
     JobMode,
+    JobOperation,
     ModelSource,
     SystemPrompt,
+    ValidationPolicy,
 )
 from telemetry.db import create_database, get_job
 
@@ -35,12 +37,14 @@ def build_envelope(args: argparse.Namespace) -> JobEnvelope:
         else ModelSource(repo_id=args.model)
     )
     return JobEnvelope(
-        schema_version="3.0",
+        schema_version="3.1",
         job_id=uuid4(),
         auth=AuthBlock(api_key=api_key),
         interface=InterfaceType.CLI,
         mode=JobMode(args.mode),
-        model_source=source,
+        operation=JobOperation.INFER,
+        source_model=source,
+        validation_policy=ValidationPolicy(),
         hardware_override=None,
         quantization_override=None,
         cluster_config=None,
@@ -107,8 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--json", action="store_true")
     status = subparsers.add_parser("status", help="read local job metadata")
     status.add_argument("job_id")
-    purge = subparsers.add_parser("purge", help="invoke the purge controller")
-    purge.add_argument("--confirm", action="store_true")
+    subparsers.add_parser("purge", help="invoke the purge controller")
     return parser
 
 
@@ -118,11 +121,20 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(run_job(args))
     if args.command == "status":
         return show_status(args.job_id)
-    if not args.confirm:
-        console.print("Purge requires --confirm.", style="yellow")
+    console.print(
+        "WARNING: purge terminates all workers and permanently deletes local "
+        "models, outputs, validation data, credentials, logs, and job history.",
+        style="bold red",
+    )
+    confirmation = console.input(
+        "Type CONFIRM exactly to continue: "
+    )
+    if confirmation != "CONFIRM":
+        console.print("Purge aborted; nothing was deleted.", style="yellow")
         return 2
-    console.print("Purge controller is not available until Phase 10.", style="yellow")
-    return 1
+    result = asyncio.run(purge_runtime())
+    console.print_json(json.dumps(result))
+    return 0
 
 
 if __name__ == "__main__":

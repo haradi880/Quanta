@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+.coverage
+htmlcov/
 .ruff_cache/
 .mypy_cache/
 
@@ -23,6 +25,10 @@ config/credentials.json
 *.log
 *.sqlite
 *.sqlite3
+cluster/mtls/*.key
+cluster/mtls/*.crt
+cluster/mtls/*.csr
+cluster/mtls/*.srl
 
 # Editors and operating systems
 .idea/

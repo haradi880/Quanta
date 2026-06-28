@@ -14,21 +14,30 @@ from uuid import UUID
 
 import psutil
 
-from core.accelerator import select_strategy
-from core.artifacts import acquire_gguf_artifact, inspect_gguf_metadata
+from core.accelerator import check_overcompilation, select_strategy
+from core.artifacts import (
+    acquire_gguf_artifact,
+    acquire_source_snapshot,
+    inspect_gguf_metadata,
+)
 from core.auth_middleware import authenticate
 from core.hf_inspector import inspect_repo
 from core.profiler import snapshot
+from core.purge import sanitize_cache
 from core.schemas import (
+    ArtifactReference,
     ErrorEnvelope,
     EventType,
     HardwareProfile,
     JobEnvelope,
+    JobOperation,
     ProgressEvent,
     SCHEMA_VERSION,
     TeardownComplete,
     ValidationResult,
 )
+from core.validation_service import build_evaluator, validate_reference_candidate
+from telemetry.db import create_database, insert_validation_result, upsert_job
 
 
 LOGGER = logging.getLogger(__name__)
@@ -54,11 +63,14 @@ TRANSITION_TABLE: dict[tuple[JobState, str], JobState] = {
     (JobState.PROFILING, "profile_complete"): JobState.PLANNING,
     (JobState.PROFILING, "failed"): JobState.ERROR,
     (JobState.PLANNING, "plan_complete"): JobState.EXECUTING,
+    (JobState.PLANNING, "inspection_complete"): JobState.TEARDOWN,
+    (JobState.PLANNING, "validation_ready"): JobState.VALIDATING,
     (JobState.PLANNING, "cluster_required"): JobState.CLUSTER_DISPATCH,
     (JobState.PLANNING, "failed"): JobState.ERROR,
     (JobState.CLUSTER_DISPATCH, "dispatch_complete"): JobState.EXECUTING,
     (JobState.CLUSTER_DISPATCH, "failed"): JobState.ERROR,
     (JobState.EXECUTING, "execution_complete"): JobState.VALIDATING,
+    (JobState.EXECUTING, "inference_complete"): JobState.TEARDOWN,
     (JobState.EXECUTING, "failed"): JobState.ERROR,
     (JobState.VALIDATING, "validation_complete"): JobState.TEARDOWN,
     (JobState.VALIDATING, "failed"): JobState.ERROR,
@@ -93,6 +105,170 @@ class Orchestrator:
         self._job_states[job_id] = JobState.IDLE
         self._state_history[job_id] = [JobState.IDLE]
 
+    @staticmethod
+    def _degrade(
+        tier: int,
+        reason: str,
+        *,
+        strategy: dict[str, Any] | None = None,
+        hardware: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Apply one exact §4.1 degradation tier to a strategy copy."""
+
+        if tier not in {1, 2, 3, 4, 5}:
+            raise ValueError("degradation tier must be between 1 and 5")
+        degraded = dict(strategy or {})
+        payload: dict[str, Any] = {
+            "tier": tier,
+            "reason": reason,
+            "strategy": degraded,
+            "retry": False,
+            "abort": False,
+            "preserve_partial_artifacts": False,
+        }
+        if tier == 1:
+            degraded.update(
+                {"backend": "llama.cpp", "format": "Q4_K_M", "gpu_layers": 0}
+            )
+            payload["action"] = "force_gguf_cpu"
+        elif tier == 2:
+            degraded["partial_offload"] = True
+            degraded["gpu_layers"] = "calculated"
+            payload["action"] = "enable_partial_offload"
+        elif tier == 3:
+            batch_size = max(int(degraded.get("batch_size", 1)), 1)
+            degraded["batch_size"] = max(batch_size // 2, 1)
+            degraded["max_retries"] = 3
+            payload.update({"action": "halve_batch_and_retry", "retry": True})
+        elif tier == 4:
+            cpu = (hardware or {}).get("cpu", {})
+            p_cores = cpu.get("p_core_ids") or []
+            physical = max(int(cpu.get("physical_cores", 1)), 1)
+            degraded.update(
+                {
+                    "backend": "llama.cpp",
+                    "format": "Q4_K_M",
+                    "gpu_layers": 0,
+                    "threads": len(p_cores) if p_cores else max(physical - 1, 1),
+                    "thread_affinity": list(p_cores),
+                }
+            )
+            payload["action"] = "cpu_hardware_aware_fallback"
+        else:
+            payload.update(
+                {
+                    "action": "abort_preserve_partial_artifacts",
+                    "abort": True,
+                    "preserve_partial_artifacts": True,
+                }
+            )
+        return payload
+
+    @staticmethod
+    def _apply_target_backend(
+        strategy: dict[str, Any],
+        target_format: str,
+        gpu_count: int,
+    ) -> None:
+        normalized = target_format.upper()
+        strategy["format"] = target_format
+        if "AWQ" in normalized:
+            strategy["backend"] = "AutoAWQ"
+        elif "EXL2" in normalized:
+            strategy["backend"] = "ExLlamaV2"
+        elif (
+            "GGUF" in normalized
+            or normalized.startswith(("Q", "IQ"))
+        ):
+            strategy["backend"] = (
+                "llama.cpp CUDA" if gpu_count > 0 else "llama.cpp"
+            )
+        else:
+            raise RuntimeError(
+                f"no production quantization backend supports target "
+                f"'{target_format}'"
+            )
+
+    @staticmethod
+    def _source_label(source: Any) -> str:
+        return str(source.repo_id or source.local_path)
+
+    async def _resolve_candidate(
+        self,
+        candidate: ArtifactReference,
+    ) -> ArtifactReference:
+        if candidate.local_path is not None:
+            path = Path(candidate.local_path).expanduser()
+            if not path.is_file():
+                raise FileNotFoundError(f"candidate artifact does not exist: {path}")
+            return candidate.model_copy(update={"local_path": str(path.resolve())})
+        if candidate.repo_id is None:
+            raise RuntimeError("candidate artifact contains no source")
+        metadata = await inspect_repo(candidate.repo_id)
+        if not metadata["repo_exists"]:
+            raise FileNotFoundError(
+                f"candidate repository does not exist: {candidate.repo_id}"
+            )
+        if any(name.lower().endswith(".gguf") for name in metadata["file_manifest"]):
+            path = await acquire_gguf_artifact(
+                candidate.repo_id,
+                metadata,
+                candidate.format or str(metadata.get("quant_format") or "GGUF"),
+                revision=candidate.revision,
+            )
+            return ArtifactReference(local_path=path, format="gguf")
+        return candidate
+
+    async def _run_validation_operation(
+        self,
+        envelope: JobEnvelope,
+    ) -> ValidationResult:
+        if envelope.candidate_artifact is None:
+            raise RuntimeError("validate operation requires a candidate artifact")
+        candidate_source = await self._resolve_candidate(
+            envelope.candidate_artifact
+        )
+        reference = await build_evaluator(envelope.source_model)
+        candidate = await build_evaluator(candidate_source)
+        try:
+            result = await validate_reference_candidate(
+                reference,
+                candidate,
+                policy=envelope.validation_policy,
+                golden_prompts=envelope.validation_prompts,
+            )
+        finally:
+            await asyncio.gather(
+                reference.close(),
+                candidate.close(),
+                return_exceptions=True,
+            )
+        engine = await asyncio.to_thread(create_database)
+        try:
+            await asyncio.to_thread(
+                upsert_job,
+                engine,
+                job_id=str(envelope.job_id),
+                model_source=self._source_label(envelope.source_model),
+                output_format=candidate_source.format or "unknown",
+                state="VALIDATED",
+                completed_at=datetime.now(timezone.utc),
+            )
+            await asyncio.to_thread(
+                insert_validation_result,
+                engine,
+                job_id=str(envelope.job_id),
+                composite_delta=result.composite_delta,
+                severity=result.severity_tier,
+                per_domain={
+                    name: value.model_dump(mode="json")
+                    for name, value in result.per_domain.items()
+                },
+            )
+        finally:
+            await asyncio.to_thread(engine.dispose)
+        return result
+
     def _transition_job(self, job_id: UUID, event: str) -> JobState:
         current = self._job_states[job_id]
         next_state = transition(current, event)
@@ -115,6 +291,21 @@ class Orchestrator:
         """Return an immutable view of handles currently owned by a job."""
 
         return tuple(self._worker_registry.get(job_id, ()))
+
+    async def purge(self, job_id: UUID | None = None) -> dict[str, object]:
+        """Run the irreversible five-phase local sanitization sequence."""
+
+        async def teardown_all() -> None:
+            job_ids = (
+                [job_id]
+                if job_id is not None
+                else list(self._worker_registry)
+            )
+            for active_job_id in job_ids:
+                if active_job_id in self._worker_registry:
+                    await self._teardown(active_job_id)
+
+        return await sanitize_cache(teardown_all)
 
     def _create_and_register_worker(
         self,
@@ -156,10 +347,11 @@ class Orchestrator:
         strategy: dict[str, Any],
     ) -> dict[str, Any]:
         execution_strategy = dict(strategy)
-        if envelope.model_source.repo_id is not None:
-            execution_strategy["model_source"] = envelope.model_source.repo_id
-        if envelope.model_source.local_path is not None:
-            execution_strategy["model_path"] = envelope.model_source.local_path
+        execution_strategy["operation"] = envelope.operation.value
+        if envelope.source_model.repo_id is not None:
+            execution_strategy["model_source"] = envelope.source_model.repo_id
+        if envelope.source_model.local_path is not None:
+            execution_strategy["model_path"] = envelope.source_model.local_path
 
         cache_root = Path(
             os.environ.get(
@@ -276,6 +468,7 @@ class Orchestrator:
         """Harvest every registered worker using TERM then KILL escalation."""
 
         handles = self._enumerate_job_handles(job_id)
+        registered = tuple(self._worker_registry.get(job_id, ()))
         harvested_pids = [
             pid
             for pid in (self._pid_for(handle) for handle in handles)
@@ -283,7 +476,7 @@ class Orchestrator:
         ]
 
         for handle in reversed(handles):
-            if self._is_alive(handle):
+            if self._is_alive(handle) or any(handle is root for root in registered):
                 await self._call_process_method(handle, "terminate")
 
         if handles:
@@ -370,6 +563,82 @@ class Orchestrator:
                         str(event.payload.get("message", "worker execution failed"))
                     )
 
+    async def _execute_with_degradation(
+        self,
+        envelope: JobEnvelope,
+        strategy: dict[str, Any],
+        hardware: dict[str, Any],
+    ) -> AsyncIterator[ProgressEvent]:
+        """Retry OOM three times, then replan once for hardware-aware CPU."""
+
+        attempt = 0
+        cpu_fallback_used = False
+        while True:
+            try:
+                async for event in self._execute_registered_workers(
+                    envelope,
+                    strategy,
+                ):
+                    if event.event_type is not EventType.ERROR:
+                        yield event
+                return
+            except RuntimeError as exc:
+                message = str(exc)
+                is_oom = "out of memory" in message.lower() or "cuda oom" in message.lower()
+                if not is_oom:
+                    raise
+                if attempt < 3:
+                    attempt += 1
+                    degradation = self._degrade(
+                        3,
+                        message,
+                        strategy=strategy,
+                        hardware=hardware,
+                    )
+                    strategy.update(degradation["strategy"])
+                    yield self._event(
+                        envelope,
+                        EventType.DEGRADATION_WARNING,
+                        {**degradation, "attempt": attempt},
+                    )
+                    continue
+                if cpu_fallback_used:
+                    emergency = self._degrade(
+                        5,
+                        message,
+                        strategy=strategy,
+                        hardware=hardware,
+                    )
+                    yield self._event(
+                        envelope,
+                        EventType.EMERGENCY_STOP,
+                        emergency,
+                    )
+                    raise RuntimeError(
+                        "system memory exhausted after CPU fallback; partial "
+                        "artifacts were preserved"
+                    ) from exc
+                cpu_fallback_used = True
+                degradation = self._degrade(
+                    4,
+                    message,
+                    strategy=strategy,
+                    hardware=hardware,
+                )
+                strategy.update(degradation["strategy"])
+                await self._teardown(envelope.job_id)
+                if not strategy.get("model_path") and envelope.source_model.repo_id:
+                    strategy["model_path"] = await acquire_source_snapshot(
+                        envelope.source_model.repo_id,
+                        revision=envelope.source_model.revision,
+                    )
+                self._create_and_register_worker(envelope, strategy)
+                yield self._event(
+                    envelope,
+                    EventType.DEGRADATION_WARNING,
+                    degradation,
+                )
+
     async def _validate_registered_workers(
         self,
         envelope: JobEnvelope,
@@ -443,8 +712,31 @@ class Orchestrator:
                 },
             )
 
-            if envelope.model_source.local_path is not None:
-                local_path = Path(envelope.model_source.local_path)
+            if envelope.operation is JobOperation.VALIDATE:
+                state = self._transition_job(
+                    envelope.job_id,
+                    "validation_ready",
+                )
+                validation = await self._run_validation_operation(envelope)
+                yield self._event(
+                    envelope,
+                    EventType.VALIDATION_RESULT,
+                    {
+                        "state": state.value,
+                        "status": "complete",
+                        "validation_result": validation.model_dump(mode="json"),
+                    },
+                )
+                if validation.quarantined:
+                    raise RuntimeError(
+                        "critical validation result quarantined the candidate"
+                    )
+                self._transition_job(envelope.job_id, "validation_complete")
+                succeeded = True
+                return
+
+            if envelope.source_model.local_path is not None:
+                local_path = Path(envelope.source_model.local_path)
                 if not local_path.exists():
                     raise FileNotFoundError(
                         f"local model path does not exist: {local_path}"
@@ -454,7 +746,7 @@ class Orchestrator:
                     "Hugging Face metadata phase"
                 )
 
-            repo_id = envelope.model_source.repo_id
+            repo_id = envelope.source_model.repo_id
             if repo_id is None:
                 raise RuntimeError("model source contains no repository identifier")
             model_meta = await inspect_repo(repo_id)
@@ -468,8 +760,45 @@ class Orchestrator:
                     "model parameter count is unavailable; strategy cannot be planned"
                 )
 
+            if envelope.operation is JobOperation.INSPECT:
+                self._transition_job(envelope.job_id, "inspection_complete")
+                yield self._event(
+                    envelope,
+                    EventType.MODEL_INSPECTION,
+                    {
+                        "state": JobState.TEARDOWN.value,
+                        "status": "complete",
+                        "model_meta": model_meta,
+                    },
+                )
+                succeeded = True
+                return
+            if envelope.operation is JobOperation.QUANTIZE:
+                if envelope.target is None:
+                    raise RuntimeError("quantize operation requires a target")
+                if model_meta.get("is_prequantized"):
+                    safety = check_overcompilation(
+                        str(model_meta.get("quant_format") or "unknown"),
+                        envelope.target.format,
+                    )
+                    if not safety["allowed"]:
+                        raise RuntimeError(str(safety["reason"]))
             acquired_model_path = None
-            if any(
+            if (
+                envelope.operation is JobOperation.QUANTIZE
+                and model_meta.get("is_prequantized")
+            ):
+                acquired_model_path = await acquire_gguf_artifact(
+                    repo_id,
+                    model_meta,
+                    str(model_meta.get("quant_format") or "GGUF"),
+                    revision=envelope.source_model.revision,
+                )
+                gguf_metadata = inspect_gguf_metadata(acquired_model_path)
+                for field_name, value in gguf_metadata.items():
+                    if value is not None:
+                        model_meta[field_name] = value
+            elif envelope.operation is not JobOperation.QUANTIZE and any(
                 filename.lower().endswith(".gguf")
                 for filename in model_meta["file_manifest"]
             ):
@@ -477,7 +806,7 @@ class Orchestrator:
                     repo_id,
                     model_meta,
                     str(model_meta.get("quant_format") or "GGUF"),
-                    revision=envelope.model_source.revision,
+                    revision=envelope.source_model.revision,
                 )
                 gguf_metadata = inspect_gguf_metadata(acquired_model_path)
                 for field_name, value in gguf_metadata.items():
@@ -494,21 +823,42 @@ class Orchestrator:
                     else None
                 ),
             )
+            if envelope.operation is JobOperation.QUANTIZE and envelope.target:
+                self._apply_target_backend(
+                    strategy,
+                    envelope.target.format,
+                    int(hardware.get("gpu_count", 0)),
+                )
             if acquired_model_path is not None:
-                strategy["format"] = str(
-                    model_meta.get("quant_format") or strategy["format"]
-                )
-                strategy["backend"] = (
-                    "llama.cpp CUDA"
-                    if int(hardware.get("gpu_count", 0)) > 0
-                    else "llama.cpp"
-                )
+                if envelope.operation is not JobOperation.QUANTIZE:
+                    strategy["format"] = str(
+                        model_meta.get("quant_format") or strategy["format"]
+                    )
+                    strategy["backend"] = (
+                        "llama.cpp CUDA"
+                        if int(hardware.get("gpu_count", 0)) > 0
+                        else "llama.cpp"
+                    )
             elif "llama.cpp" in str(strategy["backend"]).lower():
-                acquired_model_path = await acquire_gguf_artifact(
+                if envelope.operation is JobOperation.QUANTIZE:
+                    acquired_model_path = await acquire_source_snapshot(
+                        repo_id,
+                        revision=envelope.source_model.revision,
+                    )
+                else:
+                    acquired_model_path = await acquire_gguf_artifact(
+                        repo_id,
+                        model_meta,
+                        str(strategy["format"]),
+                        revision=envelope.source_model.revision,
+                    )
+            elif (
+                envelope.operation is JobOperation.QUANTIZE
+                and "exllama" in str(strategy["backend"]).lower()
+            ):
+                acquired_model_path = await acquire_source_snapshot(
                     repo_id,
-                    model_meta,
-                    str(strategy["format"]),
-                    revision=envelope.model_source.revision,
+                    revision=envelope.source_model.revision,
                 )
             if envelope.cluster_config is not None:
                 state = self._transition_job(
@@ -524,6 +874,16 @@ class Orchestrator:
 
             state = self._transition_job(envelope.job_id, "plan_complete")
             execution_strategy = self._execution_strategy(envelope, strategy)
+            if envelope.operation is JobOperation.QUANTIZE and envelope.target:
+                execution_strategy["format"] = envelope.target.format
+                if envelope.target.output_path:
+                    execution_strategy["output_path"] = envelope.target.output_path
+                elif "llama.cpp" in str(strategy["backend"]).lower():
+                    execution_strategy["output_path"] = str(
+                        Path(execution_strategy["output_path"]).with_suffix(
+                            f".{envelope.target.format}.gguf"
+                        )
+                    )
             if acquired_model_path is not None:
                 execution_strategy["model_path"] = acquired_model_path
                 execution_strategy.setdefault(
@@ -546,11 +906,29 @@ class Orchestrator:
                 },
             )
 
-            async for worker_event in self._execute_registered_workers(
+            produced_artifact = None
+            async for worker_event in self._execute_with_degradation(
                 envelope,
                 execution_strategy,
+                hardware,
             ):
+                output_path = worker_event.payload.get("output_path")
+                if isinstance(output_path, str):
+                    produced_artifact = output_path
                 yield worker_event
+            if envelope.operation is JobOperation.INFER:
+                self._transition_job(envelope.job_id, "inference_complete")
+                yield self._event(
+                    envelope,
+                    EventType.INFERENCE_PROGRESS,
+                    {
+                        "state": JobState.TEARDOWN.value,
+                        "status": "complete",
+                    },
+                )
+                succeeded = True
+                return
+
             state = self._transition_job(envelope.job_id, "execution_complete")
             yield self._event(
                 envelope,
@@ -558,16 +936,34 @@ class Orchestrator:
                 {"state": state.value, "status": "execution_complete"},
             )
 
-            validation = await self._validate_registered_workers(envelope)
+            if not produced_artifact:
+                raise RuntimeError(
+                    "quantization worker completed without an output artifact"
+                )
+            validation_envelope = envelope.model_copy(
+                update={
+                    "candidate_artifact": ArtifactReference(
+                        local_path=produced_artifact,
+                        format=envelope.target.format if envelope.target else None,
+                    )
+                }
+            )
+            validation_result = await self._run_validation_operation(
+                validation_envelope
+            )
             yield self._event(
                 envelope,
                 EventType.VALIDATION_RESULT,
                 {
                     "state": state.value,
                     "status": "complete",
-                    "validation_result": validation,
+                    "validation_result": validation_result.model_dump(mode="json"),
                 },
             )
+            if validation_result.quarantined:
+                raise RuntimeError(
+                    "critical validation result quarantined the produced artifact"
+                )
             self._transition_job(envelope.job_id, "validation_complete")
             succeeded = True
         except (GeneratorExit, asyncio.CancelledError):
@@ -624,3 +1020,9 @@ async def process_job(envelope: JobEnvelope) -> AsyncIterator[ProgressEvent]:
 
     async for event in _DEFAULT_ORCHESTRATOR.process_job(envelope):
         yield event
+
+
+async def purge(job_id: UUID | None = None) -> dict[str, object]:
+    """Module-level purge entry point used by trusted local interfaces."""
+
+    return await _DEFAULT_ORCHESTRATOR.purge(job_id)

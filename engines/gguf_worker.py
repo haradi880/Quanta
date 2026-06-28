@@ -6,6 +6,7 @@ import asyncio
 import os
 import re
 import shutil
+import sys
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import Any
@@ -70,11 +71,125 @@ class GGUFWorker(BaseWorker):
         command.extend(extra_args)
         return command
 
+    def _quantization_commands(
+        self,
+        strategy_config: dict[str, Any],
+    ) -> tuple[list[str] | None, list[str], str]:
+        converter = strategy_config.get("convert_script") or os.environ.get(
+            "HARADIBOTS_GGUF_CONVERT_SCRIPT"
+        )
+        quantizer = strategy_config.get("quantize_binary") or os.environ.get(
+            "HARADIBOTS_LLAMA_QUANTIZE_BIN"
+        )
+        source = strategy_config.get("model_path")
+        output = strategy_config.get("output_path")
+        work = strategy_config.get("work_path")
+        target_format = strategy_config.get("format")
+        if not quantizer or not Path(quantizer).is_file():
+            raise FileNotFoundError(
+                "GGUF quantization requires HARADIBOTS_LLAMA_QUANTIZE_BIN"
+            )
+        if not source or not Path(source).exists():
+            raise FileNotFoundError("GGUF conversion source does not exist")
+        if not output or not work or not target_format:
+            raise ValueError("GGUF conversion requires output_path, work_path, and format")
+        work_path = Path(work)
+        work_path.mkdir(parents=True, exist_ok=True)
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path = Path(source)
+        if source_path.is_file() and source_path.suffix.lower() == ".gguf":
+            convert_command = None
+            intermediate = source_path
+        else:
+            if not source_path.is_dir():
+                raise FileNotFoundError(
+                    "GGUF conversion source must be a model directory or GGUF file"
+                )
+            if not converter or not Path(converter).is_file():
+                raise FileNotFoundError(
+                    "GGUF conversion requires HARADIBOTS_GGUF_CONVERT_SCRIPT"
+                )
+            intermediate = work_path / "model-f16.gguf"
+            convert_command = [
+                sys.executable,
+                str(Path(converter).resolve()),
+                str(source_path.resolve()),
+                "--outfile",
+                str(intermediate.resolve()),
+                "--outtype",
+                "f16",
+            ]
+        quantize_command = [
+            str(Path(quantizer).resolve()),
+            str(intermediate.resolve()),
+            str(output_path.resolve()),
+            str(target_format),
+        ]
+        return convert_command, quantize_command, str(output_path.resolve())
+
+    async def _run_stage(
+        self,
+        command: list[str],
+        stage: str,
+    ) -> AsyncIterator[ProgressEvent]:
+        self.process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        if self.process.stdout is None:
+            raise RuntimeError(f"{stage} stdout pipe was not created")
+        async for raw_line in self.process.stdout:
+            line = raw_line.decode("utf-8", errors="replace").rstrip()
+            payload: dict[str, Any] = {
+                "backend": "gguf",
+                "stage": stage,
+                "status": "running",
+                "message": line,
+            }
+            match = PERCENT_PATTERN.search(line)
+            if match:
+                payload["progress_pct"] = min(max(float(match.group(1)), 0.0), 100.0)
+            yield self._event(EventType.QUANTIZATION_PROGRESS, payload)
+        return_code = await self.process.wait()
+        if return_code != 0:
+            raise RuntimeError(f"{stage} subprocess exited with code {return_code}")
+
     async def execute(
         self,
         strategy_config: dict[str, Any],
     ) -> AsyncIterator[ProgressEvent]:
         self._last_strategy = dict(strategy_config)
+        if strategy_config.get("operation") == "quantize":
+            try:
+                convert, quantize, output_path = self._quantization_commands(
+                    strategy_config
+                )
+                if convert is not None:
+                    async for event in self._run_stage(convert, "convert_f16"):
+                        yield event
+                async for event in self._run_stage(quantize, "quantize"):
+                    yield event
+                if not Path(output_path).is_file() or Path(output_path).stat().st_size <= 0:
+                    raise RuntimeError("GGUF quantizer produced no artifact")
+                yield self._event(
+                    EventType.QUANTIZATION_PROGRESS,
+                    {
+                        "backend": "gguf",
+                        "status": "complete",
+                        "progress_pct": 100.0,
+                        "output_path": output_path,
+                    },
+                )
+            except (FileNotFoundError, OSError, ValueError, RuntimeError) as exc:
+                yield self._error_event("gguf", str(exc))
+            return
+        progress_event = (
+            EventType.INFERENCE_PROGRESS
+            if strategy_config.get("operation") == "infer"
+            else EventType.QUANTIZATION_PROGRESS
+        )
         try:
             command = self._command(strategy_config)
             self.process = await asyncio.create_subprocess_exec(
@@ -87,7 +202,7 @@ class GGUFWorker(BaseWorker):
             return
 
         yield self._event(
-            EventType.QUANTIZATION_PROGRESS,
+            progress_event,
             {
                 "backend": "gguf",
                 "status": "launched",
@@ -111,7 +226,7 @@ class GGUFWorker(BaseWorker):
                     max(float(percentage_match.group(1)), 0.0),
                     100.0,
                 )
-            yield self._event(EventType.QUANTIZATION_PROGRESS, payload)
+            yield self._event(progress_event, payload)
 
         return_code = await self.process.wait()
         if return_code != 0:
@@ -121,7 +236,7 @@ class GGUFWorker(BaseWorker):
             )
             return
         yield self._event(
-            EventType.QUANTIZATION_PROGRESS,
+            progress_event,
             {"backend": "gguf", "status": "complete", "progress_pct": 100.0},
         )
 

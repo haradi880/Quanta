@@ -15,7 +15,7 @@ from ui.app import build_envelope as build_gui_envelope
 
 def event_for(job_id):
     return ProgressEvent(
-        schema_version="3.0",
+        schema_version="3.1",
         job_id=job_id,
         event_type=EventType.COMPLETE,
         timestamp_utc=datetime.now(timezone.utc),
@@ -32,6 +32,25 @@ def test_cli_builds_exact_authenticated_envelope(monkeypatch):
 
     assert envelope.auth.api_key == "test-key"
     assert envelope.interface.value == "cli"
+
+
+def test_cli_purge_requires_exact_second_confirmation(monkeypatch):
+    import cli.main as cli
+
+    called = []
+
+    async def fake_purge():
+        called.append(True)
+        return {"deleted_entries": 0}
+
+    monkeypatch.setattr(cli, "purge_runtime", fake_purge)
+    monkeypatch.setattr(cli.console, "input", lambda prompt: "confirm")
+    assert cli.main(["purge"]) == 2
+    assert called == []
+
+    monkeypatch.setattr(cli.console, "input", lambda prompt: "CONFIRM")
+    assert cli.main(["purge"]) == 0
+    assert called == [True]
 
 
 def test_api_rejects_missing_header():

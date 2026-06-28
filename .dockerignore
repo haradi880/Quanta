@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+dist
+build/vendor/*
+!build/vendor/README.md
+config/credentials.json
+.env
+*.sqlite*
+*.log
