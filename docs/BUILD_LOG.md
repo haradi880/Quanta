@@ -896,6 +896,9 @@ None.
 - Every action reference is pinned to its immutable release commit SHA rather
   than a mutable major tag, while an adjacent comment preserves the reviewed
   release version.
+- The expected empty-vendor failure is handled inside its PowerShell assertion,
+  so the packaging contract remains fail-closed without producing a false red
+  annotation in an otherwise successful workflow.
 
 ## 2026-06-28 — Strict CUDA hardware acceptance harness
 

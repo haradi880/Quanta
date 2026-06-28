@@ -63,13 +63,16 @@ jobs:
           python-version: "3.11"
       - run: pip install pytest
       - run: pytest tests/test_packaging.py -q
-      - id: empty-vendor-gate
-        continue-on-error: true
+      - name: Verify unpopulated release fails closed
         shell: pwsh
-        run: .\build\build_windows.ps1 -Python python
-      - if: steps.empty-vendor-gate.outcome != 'failure'
-        shell: pwsh
-        run: throw "Expected the unpopulated release vendor gate to fail."
+        run: |
+          & pwsh -NoProfile -File .\build\build_windows.ps1 -Python python
+          $BuildExit = $LASTEXITCODE
+          if ($BuildExit -eq 0) {
+            throw "Expected the unpopulated release vendor gate to fail."
+          }
+          Write-Host "Unpopulated vendor gate failed closed as required."
+          exit 0
 
   docker-build:
     runs-on: ubuntu-latest
