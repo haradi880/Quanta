@@ -887,3 +887,12 @@ None.
   down. The integration test passed in 22.26 seconds.
 - `pip-audit -r requirements-cluster.txt` reported no known vulnerabilities;
   the cluster dependency audit is now also enforced in GitHub Actions.
+
+## 2026-06-28 — CI action supply-chain refresh
+
+- Replaced Node 20-era workflow actions with the current official releases:
+  checkout v7.0.0, setup-python v6.3.0, setup-buildx v4.1.0, and build-push
+  v7.2.0.
+- Every action reference is pinned to its immutable release commit SHA rather
+  than a mutable major tag, while an adjacent comment preserves the reviewed
+  release version.
