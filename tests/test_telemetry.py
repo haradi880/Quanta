@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,13 @@ from telemetry.aggregator import (
     configured_sink,
     push_to_prometheus,
 )
-from telemetry.db import create_database, get_job, insert_job
+from telemetry.db import (
+    create_database,
+    get_job,
+    insert_job,
+    recover_incomplete_jobs,
+    upsert_job,
+)
 from telemetry.redis_pipeline import write_tick
 from telemetry.redis_manager import LocalRedisManager
 from telemetry.warnings import evaluate_tick
@@ -48,6 +55,65 @@ def test_sqlite_stores_metadata_without_telemetry_ticks(tmp_path):
     assert get_job(engine, "job-1").model_source == "test/model"
     assert inspect(engine).get_table_names() == ["jobs", "validation_results"]
     engine.dispose()
+
+
+def test_restart_recovery_marks_only_abandoned_jobs_interrupted(tmp_path):
+    engine = create_database(f"sqlite:///{(tmp_path / 'recovery.sqlite').as_posix()}")
+    insert_job(
+        engine,
+        job_id="abandoned",
+        model_source="test/model",
+        output_format="Q4_0",
+        state="EXECUTING",
+    )
+    insert_job(
+        engine,
+        job_id="finished",
+        model_source="test/model",
+        output_format="Q4_0",
+        state="COMPLETED",
+    )
+    upsert_job(
+        engine,
+        job_id="finished",
+        model_source="test/model",
+        output_format="Q4_0",
+        state="COMPLETED",
+        completed_at=datetime.now(timezone.utc),
+    )
+
+    assert recover_incomplete_jobs(engine) == ["abandoned"]
+    recovered = get_job(engine, "abandoned")
+    assert recovered.state == "INTERRUPTED"
+    assert recovered.completed_at is not None
+    assert recover_incomplete_jobs(engine) == []
+    engine.dispose()
+
+
+def test_new_orchestrator_recovers_previous_process_rows(tmp_path, monkeypatch):
+    from core.orchestrator import Orchestrator
+
+    monkeypatch.setenv("HARADIBOTS_CACHE_ROOT", str(tmp_path / "cache"))
+    engine = create_database()
+    insert_job(
+        engine,
+        job_id="previous-process",
+        model_source="test/model",
+        output_format="GGUF",
+        state="PROFILING",
+    )
+    engine.dispose()
+
+    recovered_ids = asyncio.run(Orchestrator()._recover_previous_process())
+
+    engine = create_database()
+    try:
+        recovered = get_job(engine, "previous-process")
+        assert recovered_ids == ["previous-process"]
+        assert recovered.state == "INTERRUPTED"
+        assert recovered.completed_at is not None
+    finally:
+        engine.dispose()
 
 
 def test_write_tick_returns_without_waiting_for_redis():

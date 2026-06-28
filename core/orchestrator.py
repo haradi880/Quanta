@@ -37,7 +37,12 @@ from core.schemas import (
     ValidationResult,
 )
 from core.validation_service import build_evaluator, validate_reference_candidate
-from telemetry.db import create_database, insert_validation_result, upsert_job
+from telemetry.db import (
+    create_database,
+    insert_validation_result,
+    recover_incomplete_jobs,
+    upsert_job,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -100,6 +105,44 @@ class Orchestrator:
         self._worker_registry: dict[UUID, list[Any]] = {}
         self._job_states: dict[UUID, JobState] = {}
         self._state_history: dict[UUID, list[JobState]] = {}
+        self._recovery_checked = False
+
+    async def _recover_previous_process(self) -> list[str]:
+        if self._recovery_checked:
+            return []
+        self._recovery_checked = True
+        engine = await asyncio.to_thread(create_database)
+        try:
+            return await asyncio.to_thread(recover_incomplete_jobs, engine)
+        finally:
+            await asyncio.to_thread(engine.dispose)
+
+    async def _persist_job(
+        self,
+        envelope: JobEnvelope,
+        *,
+        state: str,
+        completed: bool = False,
+    ) -> None:
+        engine = await asyncio.to_thread(create_database)
+        try:
+            await asyncio.to_thread(
+                upsert_job,
+                engine,
+                job_id=str(envelope.job_id),
+                model_source=self._source_label(envelope.source_model),
+                output_format=(
+                    envelope.target.format
+                    if envelope.target is not None
+                    else envelope.candidate_artifact.format
+                    if envelope.candidate_artifact is not None
+                    else "inference"
+                ),
+                state=state,
+                completed_at=datetime.now(timezone.utc) if completed else None,
+            )
+        finally:
+            await asyncio.to_thread(engine.dispose)
 
     def _set_initial_state(self, job_id: UUID) -> None:
         self._job_states[job_id] = JobState.IDLE
@@ -245,15 +288,6 @@ class Orchestrator:
             )
         engine = await asyncio.to_thread(create_database)
         try:
-            await asyncio.to_thread(
-                upsert_job,
-                engine,
-                job_id=str(envelope.job_id),
-                model_source=self._source_label(envelope.source_model),
-                output_format=candidate_source.format or "unknown",
-                state="VALIDATED",
-                completed_at=datetime.now(timezone.utc),
-            )
             await asyncio.to_thread(
                 insert_validation_result,
                 engine,
@@ -684,6 +718,7 @@ class Orchestrator:
             )
             return
 
+        await self._recover_previous_process()
         self._set_initial_state(envelope.job_id)
         entered_state_machine = False
         succeeded = False
@@ -691,6 +726,7 @@ class Orchestrator:
         try:
             state = self._transition_job(envelope.job_id, "job_received")
             entered_state_machine = True
+            await self._persist_job(envelope, state=state.value)
             yield self._event(
                 envelope,
                 EventType.HARDWARE_PROFILE,
@@ -999,6 +1035,20 @@ class Orchestrator:
                 state = self._transition_job(
                     envelope.job_id,
                     "teardown_complete",
+                )
+                final_state = (
+                    "VALIDATED"
+                    if succeeded
+                    and envelope.operation
+                    in {JobOperation.VALIDATE, JobOperation.QUANTIZE}
+                    else "COMPLETED"
+                    if succeeded
+                    else "FAILED"
+                )
+                await self._persist_job(
+                    envelope,
+                    state=final_state,
+                    completed=True,
                 )
                 if not stream_closing:
                     yield teardown_event

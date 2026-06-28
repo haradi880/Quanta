@@ -779,3 +779,20 @@ None.
   `476.912549`, severity `critical`, and `quarantined=true`; the golden item
   passed. This verifies the safety gate rejects a materially degraded
   candidate rather than treating successful quantization as acceptance.
+
+## 2026-06-28 — Durable restart recovery and release truth cleanup
+
+- Every authenticated lifecycle is now persisted when it enters `PROFILING`
+  and receives a terminal `COMPLETED`, `VALIDATED`, or `FAILED` state only
+  after mandatory teardown.
+- On first orchestrator use after process startup, unfinished durable rows from
+  the previous process are atomically marked `INTERRUPTED` with a completion
+  timestamp. Recovery is idempotent and never rewrites completed jobs.
+- Replaced obsolete phase-era architecture limitations with the current
+  implementation boundary and added `docs/RELEASE_STATUS.md`. CUDA inference
+  and second-machine offline execution remain explicitly unverified instead
+  of being inferred from CPU/build-host results.
+- Added CI-enforced dependency auditing, Bandit medium/high source scanning,
+  and tracked-production secret-signature detection.
+- Local regression evidence: 153 passed, one optional integration test
+  skipped, and 80.11% branch-aware core coverage.

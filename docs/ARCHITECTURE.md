@@ -76,8 +76,10 @@ an isolated subprocess; AWQ loads AutoAWQ on instantiation; EXL2 runs the
 official converter and loads ExLlamaV2 only for inference; vLLM passes a
 concrete tensor-parallel degree and obtains exact token counts from `/tokenize`.
 
-`cluster/` contains the authenticated local FastAPI/SSE gateway. Node health,
-mTLS, Ray, SLURM, and Kubernetes adapters arrive in the optional cluster phase.
+`cluster/` contains the authenticated FastAPI/SSE gateway, mTLS node-health
+probe, and optional Ray, SLURM, and Kubernetes adapters. These adapters
+provision jobs and report scheduler readiness; distributed model execution and
+artifact return are not yet integrated and must not be advertised as complete.
 
 `cli/` serializes terminal input into authenticated job envelopes and streams
 Orchestrator events with rich progress. It never calls execution engines.
@@ -105,12 +107,12 @@ never stores high-frequency telemetry ticks.
 `config/` holds validated runtime policies, including the validation suite and
 five-metric telemetry threshold table.
 
-`build/` will contain certificate, packaging, container, and deployment
-artifacts. It currently contains only its package marker.
+`build/` contains certificate generation, the non-root CUDA container,
+deterministic llama.cpp/Garnet vendor preparation, the fail-closed SHA-256
+bundle verifier, and the one-directory PyInstaller build.
 
-`tests/` contains automated checks. Its current import-isolation test is the
-intentional Phase 1 `assert True` placeholder and will become an AST-based
-linter in Phase 14.
+`tests/` contains unit, contract, packaging, cluster, lifecycle, security, and
+native integration checks. Import isolation is enforced by an AST linter.
 
 `docs/` contains the verified phase build record and this standing architecture
 reference.
@@ -184,9 +186,10 @@ llama.cpp backend instead of being routed to AWQ/vLLM based only on hardware.
 A non-GGUF repository selected for llama.cpp is rejected before worker launch
 with an actionable compatibility error.
 
-This lifecycle is required before the optional cluster layer. Real backend
-validation must still prove llama.cpp inference and Phase 7 quality scoring on
-the same artifact before the single-node production gate is considered closed.
+This lifecycle is required before the optional cluster layer. CPU inference,
+F32-to-Q4 quantization, and all-domain reference/candidate validation have
+been exercised with the pinned bundled llama.cpp tools. CUDA and clean-machine
+offline acceptance remain separate release gates.
 
 ## Environment variables
 
@@ -206,28 +209,22 @@ the same artifact before the single-node production gate is considered closed.
 - `HARADIBOTS_CACHE_ROOT` optionally overrides the per-job work/output root;
   its default is `~/.haradibots/cache`.
 
-## Known limitations
+## Verified scope and remaining release gates
 
-- The configuration files are empty skeletons.
-- The import-isolation test is intentionally a placeholder until Phase 14.
-- No profiler, model inspector, orchestrator, workers, interfaces, telemetry
-  pipeline, cluster implementation, or packaging logic exists yet.
-- The installed Torch build is CPU-only and reports CUDA unavailable.
-- JWT validation currently uses one environment-provided HS256 signing key;
-  rotating key-set support is not yet implemented.
-- NVIDIA telemetry has not been exercised on real NVIDIA hardware in this
-  environment.
-- Hybrid P/E-core classification has synthetic coverage but has not been
-  exercised on a real hybrid CPU here.
-- Full config inspection of Meta's original gated Llama repositories has not
-  been verified with an authorized account token.
-- Real backend subprocess harvesting and Ray actor termination remain
-  integration-verification items for Phases 6 and 11.
-- GGUF has not been run with a real llama.cpp binary/model in this environment.
-- AutoAWQ imports, but its CUDA kernels and real quantization are unavailable
-  on this CPU host.
-- ExLlamaV2 and vLLM are not installed because they require
-  platform/CUDA-specific builds; clean missing-backend behavior is verified.
+The standalone Windows implementation has automated coverage for contracts,
+authentication, profiling, inspection, planning, local execution, validation,
+telemetry, degradation, teardown, purge, and packaging. The bundled Garnet
+runtime has passed real `PING`, `HSET`, `HGETALL`, `SCAN`, and owned-process
+shutdown checks. The pinned llama.cpp runtime has passed real CPU inference,
+F32-to-Q4 quantization, and three-domain plus golden-prompt validation.
+
+The project is not yet labeled production-ready because this host cannot prove
+CUDA inference or clean-machine offline execution. Those two checks require a
+Windows NVIDIA test machine and a second clean Windows machine respectively.
+Optional Ray/SLURM/Kubernetes adapters also remain foundation-only until real
+schedulers execute model work and return artifacts. See `DEPLOYMENT.md` for
+the exact release procedure and `docs/RELEASE_STATUS.md` for the evidence
+matrix.
 
 ## How to run this so far
 

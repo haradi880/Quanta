@@ -32,7 +32,7 @@ test pass.
    .\HaradiBots.exe doctor --json
    ```
 
-6. The doctor must report all three llama.cpp tools, converter dependencies,
+6. The doctor must report all required llama.cpp tools, converter dependencies,
    and a successful owned Garnet
    `PING`/`HSET`/`HGETALL`/`SCAN`/stop cycle. Then submit a local GGUF inference
    job and verify no network call, import error, or surviving worker process.
@@ -73,3 +73,7 @@ Before tagging a version:
 
 Ray, SLURM, Kubernetes, and multi-node mTLS are optional cluster extensions and
 are not prerequisites for the standalone Fat Binary.
+
+The current evidence and the two outstanding standalone external checks are
+tracked in `docs/RELEASE_STATUS.md`. Passing CI or building on the development
+host does not substitute for the clean-machine offline step.

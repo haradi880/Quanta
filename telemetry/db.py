@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, create_engine
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 
@@ -137,6 +137,28 @@ def get_job(engine, job_id: str) -> Job | None:
         if row is not None:
             session.expunge(row)
         return row
+
+
+def recover_incomplete_jobs(
+    engine,
+    *,
+    recovered_at: datetime | None = None,
+) -> list[str]:
+    """Mark durable rows abandoned by a previous process as interrupted."""
+
+    timestamp = recovered_at or datetime.now(timezone.utc)
+    with Session(engine) as session:
+        rows = list(
+            session.scalars(
+                select(Job).where(Job.completed_at.is_(None))
+            )
+        )
+        recovered = [row.job_id for row in rows]
+        for row in rows:
+            row.state = "INTERRUPTED"
+            row.completed_at = timestamp
+        session.commit()
+        return recovered
 
 
 def insert_validation_result(
