@@ -10,7 +10,7 @@ import struct
 from pathlib import Path
 from typing import Any
 
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, snapshot_download
 
 
 class ArtifactCompatibilityError(RuntimeError):
@@ -106,6 +106,43 @@ async def acquire_gguf_artifact(
     resolved = Path(path).resolve()
     if not resolved.is_file() or resolved.stat().st_size <= 0:
         raise OSError(f"downloaded GGUF artifact is missing or empty: {resolved}")
+    return str(resolved)
+
+
+async def acquire_source_snapshot(
+    repo_id: str,
+    *,
+    revision: str | None = None,
+) -> str:
+    """Acquire conversion inputs only, inside the fixed sandbox cache."""
+
+    destination = _cache_root() / "sources" / repo_id.replace("/", "--")
+    destination.mkdir(parents=True, exist_ok=True)
+    path = await asyncio.to_thread(
+        snapshot_download,
+        repo_id=repo_id,
+        revision=revision,
+        local_dir=destination,
+        allow_patterns=[
+            "*.safetensors",
+            "*.safetensors.index.json",
+            "*.bin",
+            "*.bin.index.json",
+            "*.json",
+            "tokenizer.model",
+            "tokenizer.*",
+            "*.txt",
+        ],
+    )
+    resolved = Path(path).resolve()
+    if not (resolved / "config.json").is_file():
+        raise OSError("source snapshot is missing config.json")
+    if not any(
+        item.suffix.lower() in {".safetensors", ".bin"}
+        for item in resolved.rglob("*")
+        if item.is_file()
+    ):
+        raise OSError("source snapshot contains no supported full-precision weights")
     return str(resolved)
 
 

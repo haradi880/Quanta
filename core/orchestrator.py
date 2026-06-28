@@ -14,8 +14,12 @@ from uuid import UUID
 
 import psutil
 
-from core.accelerator import select_strategy
-from core.artifacts import acquire_gguf_artifact, inspect_gguf_metadata
+from core.accelerator import check_overcompilation, select_strategy
+from core.artifacts import (
+    acquire_gguf_artifact,
+    acquire_source_snapshot,
+    inspect_gguf_metadata,
+)
 from core.auth_middleware import authenticate
 from core.hf_inspector import inspect_repo
 from core.profiler import snapshot
@@ -99,6 +103,31 @@ class Orchestrator:
     def _set_initial_state(self, job_id: UUID) -> None:
         self._job_states[job_id] = JobState.IDLE
         self._state_history[job_id] = [JobState.IDLE]
+
+    @staticmethod
+    def _apply_target_backend(
+        strategy: dict[str, Any],
+        target_format: str,
+        gpu_count: int,
+    ) -> None:
+        normalized = target_format.upper()
+        strategy["format"] = target_format
+        if "AWQ" in normalized:
+            strategy["backend"] = "AutoAWQ"
+        elif "EXL2" in normalized:
+            strategy["backend"] = "ExLlamaV2"
+        elif (
+            "GGUF" in normalized
+            or normalized.startswith(("Q", "IQ"))
+        ):
+            strategy["backend"] = (
+                "llama.cpp CUDA" if gpu_count > 0 else "llama.cpp"
+            )
+        else:
+            raise RuntimeError(
+                f"no production quantization backend supports target "
+                f"'{target_format}'"
+            )
 
     @staticmethod
     def _source_label(source: Any) -> str:
@@ -592,8 +621,32 @@ class Orchestrator:
                 )
                 succeeded = True
                 return
+            if envelope.operation is JobOperation.QUANTIZE:
+                if envelope.target is None:
+                    raise RuntimeError("quantize operation requires a target")
+                if model_meta.get("is_prequantized"):
+                    safety = check_overcompilation(
+                        str(model_meta.get("quant_format") or "unknown"),
+                        envelope.target.format,
+                    )
+                    if not safety["allowed"]:
+                        raise RuntimeError(str(safety["reason"]))
             acquired_model_path = None
-            if any(
+            if (
+                envelope.operation is JobOperation.QUANTIZE
+                and model_meta.get("is_prequantized")
+            ):
+                acquired_model_path = await acquire_gguf_artifact(
+                    repo_id,
+                    model_meta,
+                    str(model_meta.get("quant_format") or "GGUF"),
+                    revision=envelope.source_model.revision,
+                )
+                gguf_metadata = inspect_gguf_metadata(acquired_model_path)
+                for field_name, value in gguf_metadata.items():
+                    if value is not None:
+                        model_meta[field_name] = value
+            elif envelope.operation is not JobOperation.QUANTIZE and any(
                 filename.lower().endswith(".gguf")
                 for filename in model_meta["file_manifest"]
             ):
@@ -618,20 +671,41 @@ class Orchestrator:
                     else None
                 ),
             )
+            if envelope.operation is JobOperation.QUANTIZE and envelope.target:
+                self._apply_target_backend(
+                    strategy,
+                    envelope.target.format,
+                    int(hardware.get("gpu_count", 0)),
+                )
             if acquired_model_path is not None:
-                strategy["format"] = str(
-                    model_meta.get("quant_format") or strategy["format"]
-                )
-                strategy["backend"] = (
-                    "llama.cpp CUDA"
-                    if int(hardware.get("gpu_count", 0)) > 0
-                    else "llama.cpp"
-                )
+                if envelope.operation is not JobOperation.QUANTIZE:
+                    strategy["format"] = str(
+                        model_meta.get("quant_format") or strategy["format"]
+                    )
+                    strategy["backend"] = (
+                        "llama.cpp CUDA"
+                        if int(hardware.get("gpu_count", 0)) > 0
+                        else "llama.cpp"
+                    )
             elif "llama.cpp" in str(strategy["backend"]).lower():
-                acquired_model_path = await acquire_gguf_artifact(
+                if envelope.operation is JobOperation.QUANTIZE:
+                    acquired_model_path = await acquire_source_snapshot(
+                        repo_id,
+                        revision=envelope.source_model.revision,
+                    )
+                else:
+                    acquired_model_path = await acquire_gguf_artifact(
+                        repo_id,
+                        model_meta,
+                        str(strategy["format"]),
+                        revision=envelope.source_model.revision,
+                    )
+            elif (
+                envelope.operation is JobOperation.QUANTIZE
+                and "exllama" in str(strategy["backend"]).lower()
+            ):
+                acquired_model_path = await acquire_source_snapshot(
                     repo_id,
-                    model_meta,
-                    str(strategy["format"]),
                     revision=envelope.source_model.revision,
                 )
             if envelope.cluster_config is not None:
@@ -648,6 +722,16 @@ class Orchestrator:
 
             state = self._transition_job(envelope.job_id, "plan_complete")
             execution_strategy = self._execution_strategy(envelope, strategy)
+            if envelope.operation is JobOperation.QUANTIZE and envelope.target:
+                execution_strategy["format"] = envelope.target.format
+                if envelope.target.output_path:
+                    execution_strategy["output_path"] = envelope.target.output_path
+                elif "llama.cpp" in str(strategy["backend"]).lower():
+                    execution_strategy["output_path"] = str(
+                        Path(execution_strategy["output_path"]).with_suffix(
+                            f".{envelope.target.format}.gguf"
+                        )
+                    )
             if acquired_model_path is not None:
                 execution_strategy["model_path"] = acquired_model_path
                 execution_strategy.setdefault(
@@ -670,10 +754,14 @@ class Orchestrator:
                 },
             )
 
+            produced_artifact = None
             async for worker_event in self._execute_registered_workers(
                 envelope,
                 execution_strategy,
             ):
+                output_path = worker_event.payload.get("output_path")
+                if isinstance(output_path, str):
+                    produced_artifact = output_path
                 yield worker_event
             if envelope.operation is JobOperation.INFER:
                 self._transition_job(envelope.job_id, "inference_complete")
@@ -695,16 +783,34 @@ class Orchestrator:
                 {"state": state.value, "status": "execution_complete"},
             )
 
-            validation = await self._validate_registered_workers(envelope)
+            if not produced_artifact:
+                raise RuntimeError(
+                    "quantization worker completed without an output artifact"
+                )
+            validation_envelope = envelope.model_copy(
+                update={
+                    "candidate_artifact": ArtifactReference(
+                        local_path=produced_artifact,
+                        format=envelope.target.format if envelope.target else None,
+                    )
+                }
+            )
+            validation_result = await self._run_validation_operation(
+                validation_envelope
+            )
             yield self._event(
                 envelope,
                 EventType.VALIDATION_RESULT,
                 {
                     "state": state.value,
                     "status": "complete",
-                    "validation_result": validation,
+                    "validation_result": validation_result.model_dump(mode="json"),
                 },
             )
+            if validation_result.quarantined:
+                raise RuntimeError(
+                    "critical validation result quarantined the produced artifact"
+                )
             self._transition_job(envelope.job_id, "validation_complete")
             succeeded = True
         except (GeneratorExit, asyncio.CancelledError):

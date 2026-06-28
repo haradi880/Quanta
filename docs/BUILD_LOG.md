@@ -573,3 +573,19 @@ None.
 - Golden prompts remain separate from the composite.
 - llama-perplexity output parsing accepts its final PPL line.
 - An Orchestrator integration test persists a strict three-domain result and finishes through teardown.
+## 2026-06-28 — Quantization Artifact Handoff
+
+### Changes
+
+- Added sandboxed full-precision source snapshot acquisition for conversion.
+- Added llama.cpp `convert_hf_to_gguf.py` plus `llama-quantize` subprocess stages.
+- Added safe GGUF-to-GGUF requantization for conversion-table-approved sources.
+- Made the requested target format, not hardware alone, select the quantization backend.
+- Captured the worker's produced artifact path and passed it into the strict reference/candidate validator.
+- Blocked successful completion when a worker emits no artifact or validation quarantines it.
+
+### Verification
+
+- GGUF command tests cover full-precision conversion and direct requantization.
+- Backend-routing tests prove Q4, AWQ, and EXL2 targets select compatible workers and unsupported GPTQ fails explicitly.
+- A full simulated quantization lifecycle proves the emitted artifact becomes the validation candidate before teardown.

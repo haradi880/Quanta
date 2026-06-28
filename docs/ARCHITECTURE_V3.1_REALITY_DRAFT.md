@@ -65,6 +65,13 @@ Artifact delivery must fail closed unless the required original-versus-candidate
 validation result is produced and schema-valid. A successful subprocess alone
 is not a successful quantization job.
 
+The quantization path acquires conversion inputs under the sandbox cache,
+selects a backend from the requested target format, captures the concrete
+artifact emitted by that worker, and constructs the candidate reference used by
+the strict validation service. llama.cpp conversion is split into isolated
+full-precision conversion and quantization subprocesses. A missing output path,
+empty artifact, unsupported target, or quarantined result prevents success.
+
 ## 3. Required v3.1 Job Envelope additions
 
 The v3.0 fields remain, with these required additions:
