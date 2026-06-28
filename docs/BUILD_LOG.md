@@ -624,5 +624,6 @@ None.
 - Import isolation catches a deliberate CLI-to-engine violation.
 - Packaging tests prove incomplete native bundles fail closed and complete fake bundles resolve every runtime variable.
 - PyInstaller manifest is statically verified as one-dir.
-- Docker could not be built locally because this Windows host has no Docker executable; CI remains the authoritative build check.
+- Docker could not be built locally because this Windows host has no Docker executable; GitHub Actions built it successfully in 2m26s.
 - Measured total coverage is 46.64%, below the required 80%; enforcement is intentionally not yet enabled and production release remains blocked.
+- GitHub Actions passed lint, import isolation, unit tests, and Docker build on PR #2.
