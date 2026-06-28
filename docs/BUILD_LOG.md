@@ -826,3 +826,18 @@ None.
   zero, emitted `teardown_complete` with zero forced kills, and ended at
   `IDLE/complete`. JSON mode no longer starts Rich's Unicode progress renderer,
   preventing the prior Windows cp1252 shutdown failure.
+
+## 2026-06-28 — Repeatable offline release acceptance
+
+- Added `build/verify_offline_release.ps1`, a verifier that runs on stock
+  Windows PowerShell and requires no Python installation.
+- It validates an optional expected `Quanta.exe` SHA-256, forces Hugging Face,
+  Transformers, and Datasets offline modes, runs the packaged native doctor,
+  executes a local GGUF lifecycle, checks `teardown_complete`, requires zero
+  forced kills and final `IDLE/complete`, and rejects surviving Quanta,
+  llama.cpp, or Garnet processes.
+- The verifier passed locally against the 17,328-file distribution and
+  executable hash
+  `44BD2B45D7625689615DBC1E5D09A916ED0DF49C00329B4A2E64B78F2DCC94A5`.
+  A second disconnected Windows machine is still required before changing the
+  clean-machine gate from “external verification required” to “passed.”

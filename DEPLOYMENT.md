@@ -25,17 +25,20 @@ test pass.
    ```
 
 4. Copy `dist/Quanta/` to a clean machine with no Python installation.
-5. Disconnect networking and run:
+5. Disconnect networking and run the no-Python acceptance verifier:
 
    ```powershell
-   .\Quanta.exe --help
-   .\Quanta.exe doctor --json
+   .\build\verify_offline_release.ps1 `
+     -DistributionPath .\dist\Quanta `
+     -ModelPath C:\Models\acceptance.gguf `
+     -ExpectedExeSha256 44BD2B45D7625689615DBC1E5D09A916ED0DF49C00329B4A2E64B78F2DCC94A5
    ```
 
-6. The doctor must report all required llama.cpp tools, converter dependencies,
-   and a successful owned Garnet
-   `PING`/`HSET`/`HGETALL`/`SCAN`/stop cycle. Then submit a local GGUF inference
-   job and verify no network call, import error, or surviving worker process.
+6. The verifier forces all supported Hugging Face/Transformers offline flags,
+   checks every required native tool, runs Garnet
+   `PING`/`HSET`/`HGETALL`/`SCAN`/stop, submits the local GGUF, requires
+   `teardown_complete` with zero forced kills, requires final `IDLE/complete`,
+   and rejects any surviving Quanta, llama.cpp, or Garnet process.
 
 The binary automatically resolves bundled native tools. Its private frozen
 converter launcher executes the pinned converter and bundled `conversion/` and

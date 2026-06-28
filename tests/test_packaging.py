@@ -90,6 +90,9 @@ def test_packaging_manifests_are_offline_and_one_dir():
     workflow = (root / ".github" / "workflows" / "ci.yml").read_text(
         encoding="utf-8"
     )
+    offline_verifier = (
+        root / "build" / "verify_offline_release.ps1"
+    ).read_text(encoding="utf-8")
 
     assert "COLLECT(" in spec
     assert "onefile" not in spec.lower()
@@ -103,3 +106,8 @@ def test_packaging_manifests_are_offline_and_one_dir():
     assert "cluster.api_server:app" in dockerfile
     assert "import-isolation:" in workflow
     assert "docker-build:" in workflow
+    assert "$env:HF_HUB_OFFLINE = \"1\"" in offline_verifier
+    assert '"teardown_complete"' in offline_verifier
+    assert '"forced_kill_count"' in offline_verifier
+    assert '"IDLE"' in offline_verifier
+    assert "Get-Process" in offline_verifier

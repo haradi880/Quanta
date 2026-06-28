@@ -21,7 +21,7 @@ static inspection alone are labeled separately.
 | Local Garnet lifecycle | Passed | Real bundled `PING`, `HSET`, `HGETALL`, `SCAN`, and clean stop |
 | Vendor integrity and notices | Passed | Six required assets plus full SHA-256 inventory; Garnet/.NET notices bundled |
 | One-dir executable build | Passed on build host | Packaged executable, packaged doctor, and local-GGUF CLI lifecycle passed |
-| Clean-machine offline execution | External verification required | Build-host local-GGUF lifecycle passes; distribution must still be copied to a second Windows machine with networking disabled |
+| Clean-machine offline execution | External verification required | Build-host local-GGUF lifecycle passes; run `build/verify_offline_release.ps1` on a second disconnected Windows machine |
 | Security/dependency checks | Passed and CI-enforced | pip-audit, Bandit medium/high scan, and tracked-production secret signatures |
 | Core branch coverage | Passed | 80% minimum enforced locally and in CI |
 | Optional Ray/SLURM/Kubernetes | Foundation only | Provisioning/readiness adapters tested; distributed execution and artifact return are not integrated |
