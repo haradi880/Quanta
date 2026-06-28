@@ -533,3 +533,10 @@ None.
 - This Windows host has no CMake/compiler toolchain, so genuine llama.cpp inference was not claimed locally.
 - Kaggle/Colab must build llama.cpp CUDA and run the documented tiny GGUF smoke test.
 - Phase 7 perplexity validation is not yet wired to the live GGUF backend; successful inference alone does not close production validation.
+
+### Reality-aligned architecture correction
+
+- Added `docs/ARCHITECTURE_V3.1_REALITY_DRAFT.md` and its DOCX rendering.
+- Documented the missing operation semantics and source-versus-candidate distinction in v3.0.
+- Defined operation-specific state paths and a fail-closed production acceptance gate.
+- Tightened the current Orchestrator so a backend-specific output dictionary can no longer masquerade as `ValidationResult`; artifact delivery is blocked unless strict original-versus-quantized validation is available.

@@ -121,7 +121,23 @@ def test_orchestrator_passes_acquired_gguf_path_to_worker(tmp_path, monkeypatch)
             )
 
         async def validate(self, prompts):
-            return {"prompt_count": len(prompts), "outputs": []}
+            domain = {
+                "original_perplexity": 10.0,
+                "quantized_perplexity": 10.01,
+                "delta": 0.01,
+            }
+            return {
+                "per_domain": {
+                    "logic": domain,
+                    "retrieval": domain,
+                    "code": domain,
+                },
+                "composite_delta": 0.01,
+                "severity_tier": "excellent",
+                "requires_confirmation": False,
+                "quarantined": False,
+                "golden_results": [],
+            }
 
         async def terminate(self):
             return None
@@ -208,6 +224,31 @@ def test_orchestrator_passes_acquired_gguf_path_to_worker(tmp_path, monkeypatch)
     assert captured["model_path"] == str(model_path)
     assert captured["format"] == "Q4_0"
     assert events[-1].payload["status"] == "complete"
+
+
+def test_orchestrator_blocks_non_validation_result():
+    import asyncio
+
+    job_id = uuid4()
+
+    class InvalidWorker:
+        async def validate(self, prompts):
+            return {"outputs": ["looks plausible but is not validation"]}
+
+    orchestrator = Orchestrator()
+    orchestrator.register_worker(job_id, InvalidWorker())
+    envelope = JobEnvelope(
+        job_id=job_id,
+        auth=AuthBlock(api_key="internal"),
+        interface=InterfaceType.CLI,
+        mode=JobMode.AUTO,
+        model_source=ModelSource(repo_id="owner/model"),
+        system_prompt=SystemPrompt(preset_id="default"),
+        callbacks=CallbackConfig(),
+    )
+
+    with pytest.raises(RuntimeError, match="artifact delivery is blocked"):
+        asyncio.run(orchestrator._validate_registered_workers(envelope))
 
 
 async def _async_value(value):
