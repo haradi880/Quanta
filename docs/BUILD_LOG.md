@@ -648,3 +648,40 @@ None.
 
 - No real Ray/SLURM/Kubernetes scheduler is available on this host.
 - Scheduler adapters currently provision and report readiness; model-shard execution and artifact return must be integrated before cluster jobs can be called production-complete.
+
+## 2026-06-28 — Release Hardening and Completion Audit
+
+### Changes
+
+- Corrected accelerator sequence-length handling and EXL2 metadata parsing.
+- Expanded core, worker, platform, validation, telemetry, cluster, artifact,
+  authentication, and runtime-discovery tests.
+- Enforced branch-aware `core/` coverage at 80% in local configuration and CI.
+- Upgraded Transformers from 4.45.2 to 5.12.1 after the dependency audit found
+  published vulnerabilities in the old pin.
+- Raised the Torch compatibility floor to 2.4 and moved legacy AutoAWQ,
+  AutoGPTQ, and PEFT packages into an explicit optional requirements file,
+  preventing their source-build failures from breaking CPU and notebook
+  installs.
+- Migrated remaining runtime configuration schema markers from 3.0 to 3.1.
+- Added generated coverage output to `.gitignore`.
+
+### Verified evidence
+
+- `pytest tests -m "not integration" --cov=core --cov-branch
+  --cov-fail-under=80` returned 140 passed, one skipped, and 80.03%.
+- Ruff fatal/static checks, import isolation, packaging contract tests,
+  CLI help, and API health smoke tests passed.
+- Dependency audits for notebook/single-machine dependencies and optional
+  cluster dependencies reported no known vulnerabilities after the upgrade.
+- The tracked-secret signature scan returned no matches.
+- The offline vendor verifier rejected this checkout because the five required
+  native payloads are absent, proving the release build remains fail closed.
+
+### External release acceptance still required
+
+- Populate the licensed/pinned native vendor payload and verify its hashes.
+- Build the one-dir Windows executable and run CPU/CUDA GGUF inference,
+  conversion, perplexity, Redis lifecycle, and purge on a clean offline machine.
+- Exercise real Ray, SLURM, and Kubernetes schedulers only for optional
+  team/server distribution; these are not standalone v1 prerequisites.

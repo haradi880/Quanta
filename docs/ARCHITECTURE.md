@@ -56,7 +56,7 @@ Local metadata and generated directories such as `.git`, `.venv`, `.pytest_cache
 
 ## Module responsibilities
 
-`core/` contains the strict v3.0 wire schemas, authentication boundary,
+`core/` contains the strict v3.1 wire schemas, authentication boundary,
 hardware profiler, asynchronous Hugging Face inspector, strategy planner, and
 orchestrator. The profiler gathers NVIDIA telemetry when NVML is available,
 otherwise produces a topology-aware CPU profile; it also owns the thread plan,
@@ -120,12 +120,12 @@ reference.
 All contracts live in `core/schemas.py`, use Pydantic v2 strict mode, and reject
 undeclared fields.
 
-- `JobEnvelope` is the inbound v3.0 contract. It carries `schema_version`,
+- `JobEnvelope` is the inbound v3.1 contract. It carries `schema_version`,
   `job_id`, `auth`, `interface`, `mode`, `model_source`, optional hardware,
   quantization and cluster overrides, optional validation prompts,
   `system_prompt`, the deprecated display refresh hint, and callback channels.
 - `AuthBlock` permits exactly one of an API key or JWT.
-- `ProgressEvent` is the outbound stream contract with the v3.0 event type
+- `ProgressEvent` is the outbound stream contract with the v3.1 event type
   vocabulary, UTC timestamp, event payload, and latest telemetry snapshot.
 - `HardwareProfile`, `GPUProfile`, and `CPUProfile` describe the hardware
   inventory consumed by planning. `core/profiler.py:snapshot()` now produces

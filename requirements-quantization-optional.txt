@@ -1,0 +1,8 @@
+# Optional legacy Python quantization backends.
+#
+# The production GGUF path uses bundled llama.cpp tools and does not need
+# these packages. Install only when explicitly enabling AWQ/GPTQ workers in a
+# CUDA/Python environment verified by the release builder.
+auto-gptq
+autoawq
+peft

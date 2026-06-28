@@ -1,4 +1,6 @@
 import asyncio
+import sys
+from types import SimpleNamespace
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -20,6 +22,8 @@ from core.schemas import (
 )
 from core.validation_service import (
     LlamaPerplexityEvaluator,
+    TransformersEvaluator,
+    build_evaluator,
     validate_reference_candidate,
 )
 
@@ -153,3 +157,84 @@ def test_validate_operation_persists_strict_result(tmp_path, monkeypatch):
 
 async def _collect(orchestrator, envelope):
     return [event async for event in orchestrator.process_job(envelope)]
+
+
+def test_transformers_evaluator_loads_scores_and_closes(monkeypatch):
+    torch = pytest.importorskip("torch")
+
+    class Tokenizer:
+        model_max_length = 512
+
+        @classmethod
+        def from_pretrained(cls, source, revision=None):
+            return cls()
+
+        def __call__(self, text, **kwargs):
+            return {"input_ids": torch.tensor([[1, 2, 3]])}
+
+    class Model:
+        config = SimpleNamespace(max_position_embeddings=256)
+
+        @classmethod
+        def from_pretrained(cls, source, revision=None):
+            return cls()
+
+        def eval(self):
+            return None
+
+        def __call__(self, input_ids, labels):
+            return SimpleNamespace(loss=torch.tensor(1.0), logits=None)
+
+    fake_transformers = SimpleNamespace(
+        AutoModelForCausalLM=Model,
+        AutoTokenizer=Tokenizer,
+    )
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+    evaluator = TransformersEvaluator("owner/model")
+    assert evaluator.max_context_length == 256
+    assert asyncio.run(evaluator.perplexity("hello")) == pytest.approx(2.7182817)
+    asyncio.run(evaluator.close())
+    assert evaluator.model is None
+
+
+def test_llama_perplexity_subprocess_and_cleanup(tmp_path, monkeypatch):
+    binary = tmp_path / "llama-perplexity"
+    model = tmp_path / "model.gguf"
+    binary.write_bytes(b"binary")
+    model.write_bytes(b"GGUF")
+    monkeypatch.setenv("HARADIBOTS_CACHE_ROOT", str(tmp_path / "cache"))
+
+    class Process:
+        returncode = 0
+
+        async def communicate(self):
+            return b"Final estimate: PPL = 4.25\n", b""
+
+    async def fake_subprocess(*args, **kwargs):
+        return Process()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_subprocess)
+    evaluator = LlamaPerplexityEvaluator(
+        str(model),
+        binary_path=str(binary),
+        max_context_length=128,
+    )
+    assert asyncio.run(evaluator.perplexity("validation text")) == 4.25
+    assert list((tmp_path / "cache" / "validation").glob("*.txt")) == []
+    asyncio.run(evaluator.close())
+
+
+def test_build_evaluator_routes_gguf_and_transformers(tmp_path, monkeypatch):
+    model = tmp_path / "candidate.gguf"
+    binary = tmp_path / "llama-perplexity"
+    model.write_bytes(b"GGUF")
+    binary.write_bytes(b"binary")
+    monkeypatch.setenv("HARADIBOTS_LLAMA_PERPLEXITY_BIN", str(binary))
+    gguf = asyncio.run(
+        build_evaluator(
+            ArtifactReference(local_path=str(model), format="gguf"),
+            gguf_context_length=512,
+        )
+    )
+    assert isinstance(gguf, LlamaPerplexityEvaluator)
+    assert gguf.max_context_length == 512

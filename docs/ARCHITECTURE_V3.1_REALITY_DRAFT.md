@@ -1,8 +1,8 @@
 # HaradiBots Architecture v3.1 — Reality-Aligned Draft
 
-Status: draft correction to v3.0. This document does not claim production
-readiness. It separates verified behavior from designed or unimplemented
-behavior.
+Status: release-candidate architecture. The single-machine core is implemented
+and covered by an enforced 80% branch-aware test gate. External native-runtime
+acceptance remains explicitly separate from implementation completeness.
 
 ## 1. Verified baseline
 
@@ -15,8 +15,8 @@ behavior.
 - GGUF repositories can now be resolved to a sandboxed local artifact and
   parsed for planning metadata.
 - SQLite stores job metadata only. Local Redis is the standalone hot path.
-- Automated suite status at this revision: 33 tests passed before the v3.1
-  fail-closed validation correction.
+- Automated suite status at this revision: 140 passed, one intentionally
+  skipped, with 80.03% branch-aware coverage across `core/`.
 
 ## 2. Production blockers discovered by real Kaggle testing
 
@@ -217,7 +217,8 @@ vendor tree before a release build. Frozen runtime discovery sets their paths
 without networking. The Docker API runs as a non-root user and exposes only its
 health/API port.
 
-Static packaging tests pass, but this host has neither the native vendor payload
-nor Docker. Therefore offline Fat Binary execution and container startup remain
-unverified release gates. Current measured coverage is 46.64%; the required 80%
-gate is also not yet satisfied.
+Static packaging tests pass, GitHub Actions has built the Docker image, and the
+80% core coverage gate is enforced in CI. This host does not contain the
+release-licensed native vendor payload, so clean-machine offline Fat Binary
+execution remains an external release acceptance gate. The verifier fails
+closed when any required native component is absent.

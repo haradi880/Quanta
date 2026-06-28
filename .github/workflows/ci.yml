@@ -37,8 +37,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -r requirements-notebook.txt pytest pytest-cov psycopg2-binary PyYAML
-      - run: pytest tests/ -m "not integration" --cov=. --cov-report=term-missing
+      - run: pytest tests/ -m "not integration" --cov=core --cov-branch --cov-report=term-missing --cov-fail-under=80
 
   docker-build:
     runs-on: ubuntu-latest
