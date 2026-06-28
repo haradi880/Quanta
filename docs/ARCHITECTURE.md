@@ -153,7 +153,10 @@ above `0.60`. Poor requires confirmation and critical is quarantined.
 ## Deployment Mode
 
 The primary distribution is a single-machine Enterprise Fat Binary / executable
-download. Python dependencies and Microsoft Garnet are bundled at build time.
+download. Python dependencies, CPU and CUDA 12.4 llama.cpp runtimes, and
+Microsoft Garnet are bundled at build time. Runtime discovery selects the CUDA
+tools only when an NVIDIA driver reports a GPU, otherwise it uses the CPU
+tools; an explicit operator environment override remains authoritative.
 Garnet is native Windows, uses a self-contained .NET runtime, and implements
 the RESP protocol used by Redis clients. It is explicitly “close-enough,” not
 100%-identical to Redis. The standalone telemetry path currently relies only

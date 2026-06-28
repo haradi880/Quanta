@@ -10,6 +10,8 @@ The script builds and stages:
 
 - pinned official llama.cpp Windows CPU executables, including
   `llama-completion` for noninteractive inference;
+- pinned official llama.cpp Windows CUDA 12.4 executables and redistributable
+  NVIDIA runtime DLLs under `cuda/`, with the CUDA EULA bundled;
 - matching `convert_hf_to_gguf.py`, `conversion/`, and `gguf-py/`;
 - Microsoft Garnet v1.1.10 as a self-contained native Windows x64 RESP server;
 - Garnet’s MIT `LICENSE` and `NOTICE.md`;

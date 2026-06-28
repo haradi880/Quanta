@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from build.verify_bundle import REQUIRED_FILENAMES, REQUIRED_STEMS, verify_vendor
+from build.verify_bundle import (
+    CUDA_FILENAMES,
+    REQUIRED_FILENAMES,
+    REQUIRED_STEMS,
+    verify_vendor,
+)
 from core.runtime import NATIVE_ENV, configure_native_runtime
 
 
@@ -80,6 +85,39 @@ def test_bundle_verifier_rejects_tampered_native_asset(tmp_path):
     (tmp_path / REQUIRED_FILENAMES["llama-cli"]).write_bytes(b"tampered")
 
     with pytest.raises(RuntimeError, match="checksum mismatch for file: llama-cli.exe"):
+        verify_vendor(tmp_path)
+
+
+def test_bundle_verifier_requires_complete_licensed_cuda_payload(tmp_path):
+    assets = {}
+    for stem in REQUIRED_STEMS:
+        path = tmp_path / REQUIRED_FILENAMES[stem]
+        path.write_bytes(stem.encode())
+        assets[stem] = {
+            "sha256": hashlib.sha256(stem.encode()).hexdigest(),
+            "source": "https://example.invalid/release",
+            "license": "MIT",
+        }
+    converter = tmp_path / "convert_hf_to_gguf.py"
+    converter.write_bytes(b"converter")
+    assets[converter.name] = {
+        "sha256": hashlib.sha256(b"converter").hexdigest(),
+        "source": "https://example.invalid/source",
+        "license": "MIT",
+    }
+    cuda = tmp_path / "cuda"
+    cuda.mkdir()
+    for name, filename in CUDA_FILENAMES.items():
+        path = cuda / filename
+        path.write_bytes(name.encode())
+        assets[name] = {
+            "sha256": hashlib.sha256(name.encode()).hexdigest(),
+            "source": "https://example.invalid/cuda",
+            "license": "NVIDIA CUDA EULA",
+        }
+    write_manifest(tmp_path, assets)
+
+    with pytest.raises(RuntimeError, match="NVIDIA EULA"):
         verify_vendor(tmp_path)
 
 

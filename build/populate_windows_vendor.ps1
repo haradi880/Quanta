@@ -7,6 +7,11 @@ $LlamaTag = "b9637"
 $LlamaCommit = "aedb2a5e9ca3d4064148bbb919e0ddc0c1b70ab3"
 $LlamaArchiveSha256 = "f7783c2b8c007f95e710ac40f26a24861a80b603b0b739fc54d7c926a4716c1e"
 $LlamaArchiveUrl = "https://github.com/ggml-org/llama.cpp/releases/download/$LlamaTag/llama-$LlamaTag-bin-win-cpu-x64.zip"
+$LlamaCudaArchiveUrl = "https://github.com/ggml-org/llama.cpp/releases/download/$LlamaTag/llama-$LlamaTag-bin-win-cuda-12.4-x64.zip"
+$LlamaCudaArchiveSha256 = "e0080832743b478fc3d1a465c2d281091c3e02145d70ad06ad181f81895270a8"
+$CudaRuntimeArchiveUrl = "https://github.com/ggml-org/llama.cpp/releases/download/$LlamaTag/cudart-llama-bin-win-cuda-12.4-x64.zip"
+$CudaRuntimeArchiveSha256 = "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6"
+$CudaEulaUrl = "https://docs.nvidia.com/cuda/archive/12.4.1/eula/index.html"
 $LlamaRepository = "https://github.com/ggml-org/llama.cpp.git"
 
 $GarnetVersion = "1.1.10"
@@ -20,6 +25,9 @@ $DotnetLibraryLicenseUrl = "https://dotnet.microsoft.com/dotnet_library_license.
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $VendorRoot = (Resolve-Path (Join-Path $PSScriptRoot "vendor")).Path
 $CacheRoot = Join-Path $RepoRoot ".build-cache"
+$CachedLlamaArchive = Join-Path $CacheRoot "llama-$LlamaTag-cpu.zip"
+$CachedLlamaCudaArchive = Join-Path $CacheRoot "llama-$LlamaTag-cuda-12.4.zip"
+$CachedCudaRuntimeArchive = Join-Path $CacheRoot "llama-$LlamaTag-cudart-12.4.zip"
 $CachedDotnetArchive = Join-Path $CacheRoot "dotnet-sdk-$DotnetSdkVersion-win-x64.zip"
 $ExpectedVendorRoot = [IO.Path]::GetFullPath((Join-Path $RepoRoot "build\vendor"))
 if ($VendorRoot -ne $ExpectedVendorRoot) {
@@ -29,6 +37,8 @@ if ($VendorRoot -ne $ExpectedVendorRoot) {
 $TemporaryRoot = Join-Path ([IO.Path]::GetTempPath()) ("haradibots-vendor-" + [guid]::NewGuid())
 $Stage = Join-Path $TemporaryRoot "stage"
 $LlamaArchive = Join-Path $TemporaryRoot "llama.zip"
+$LlamaCudaArchive = Join-Path $TemporaryRoot "llama-cuda.zip"
+$CudaRuntimeArchive = Join-Path $TemporaryRoot "cuda-runtime.zip"
 $LlamaSource = Join-Path $TemporaryRoot "llama-source"
 $DotnetArchive = Join-Path $TemporaryRoot "dotnet-sdk.zip"
 $DotnetRoot = Join-Path $TemporaryRoot "dotnet"
@@ -46,11 +56,39 @@ function Assert-GitSuccess([string]$Message) {
 try {
     New-Item -ItemType Directory -Path $Stage, $DotnetRoot, $CacheRoot -Force | Out-Null
 
-    Invoke-WebRequest -Uri $LlamaArchiveUrl -OutFile $LlamaArchive
-    if ((Get-Sha256 $LlamaArchive) -ne $LlamaArchiveSha256) {
+    if (-not (Test-Path $CachedLlamaArchive -PathType Leaf) -or
+        (Get-Sha256 $CachedLlamaArchive) -ne $LlamaArchiveSha256) {
+        Invoke-WebRequest -Uri $LlamaArchiveUrl -OutFile $CachedLlamaArchive
+    }
+    if ((Get-Sha256 $CachedLlamaArchive) -ne $LlamaArchiveSha256) {
         throw "llama.cpp release archive checksum mismatch."
     }
+    Copy-Item $CachedLlamaArchive $LlamaArchive
     Expand-Archive -LiteralPath $LlamaArchive -DestinationPath $Stage
+
+    $CudaStage = Join-Path $Stage "cuda"
+    New-Item -ItemType Directory -Path $CudaStage -Force | Out-Null
+    if (-not (Test-Path $CachedLlamaCudaArchive -PathType Leaf) -or
+        (Get-Sha256 $CachedLlamaCudaArchive) -ne $LlamaCudaArchiveSha256) {
+        Invoke-WebRequest -Uri $LlamaCudaArchiveUrl -OutFile $CachedLlamaCudaArchive
+    }
+    if ((Get-Sha256 $CachedLlamaCudaArchive) -ne $LlamaCudaArchiveSha256) {
+        throw "llama.cpp CUDA release archive checksum mismatch."
+    }
+    if (-not (Test-Path $CachedCudaRuntimeArchive -PathType Leaf) -or
+        (Get-Sha256 $CachedCudaRuntimeArchive) -ne $CudaRuntimeArchiveSha256) {
+        Invoke-WebRequest -Uri $CudaRuntimeArchiveUrl -OutFile $CachedCudaRuntimeArchive
+    }
+    if ((Get-Sha256 $CachedCudaRuntimeArchive) -ne $CudaRuntimeArchiveSha256) {
+        throw "CUDA runtime archive checksum mismatch."
+    }
+    Copy-Item $CachedLlamaCudaArchive $LlamaCudaArchive
+    Copy-Item $CachedCudaRuntimeArchive $CudaRuntimeArchive
+    Expand-Archive -LiteralPath $LlamaCudaArchive -DestinationPath $CudaStage
+    Expand-Archive -LiteralPath $CudaRuntimeArchive -DestinationPath $CudaStage
+    Invoke-WebRequest -Uri $CudaEulaUrl -OutFile (
+        Join-Path $CudaStage "LICENSE.NVIDIA-CUDA-12.4.html"
+    )
     git clone --quiet --filter=blob:none --no-checkout $LlamaRepository $LlamaSource
     Assert-GitSuccess "Unable to clone pinned llama.cpp source."
     git -C $LlamaSource sparse-checkout init --no-cone
@@ -121,6 +159,18 @@ try {
             sha256 = Get-Sha256 $Path
             source = $LlamaArchiveUrl
             license = "MIT"
+        }
+    }
+    foreach ($Name in @("llama-completion", "llama-quantize", "llama-perplexity")) {
+        $Path = Join-Path $CudaStage "$Name.exe"
+        if (-not (Test-Path $Path -PathType Leaf)) {
+            throw "llama.cpp CUDA archive is missing $Name.exe."
+        }
+        $Assets["cuda-$Name"] = [ordered]@{
+            sha256 = Get-Sha256 $Path
+            source = $LlamaCudaArchiveUrl
+            license = "MIT; NVIDIA CUDA 12.4 redistributable runtime under bundled EULA"
+            cuda_runtime_source = $CudaRuntimeArchiveUrl
         }
     }
     $Converter = Join-Path $Stage "convert_hf_to_gguf.py"

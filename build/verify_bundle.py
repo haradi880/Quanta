@@ -23,6 +23,11 @@ REQUIRED_FILENAMES = {
     "garnet-server": "GarnetServer.exe",
 }
 MANIFEST_NAME = "vendor-manifest.json"
+CUDA_FILENAMES = {
+    "cuda-llama-completion": "llama-completion.exe",
+    "cuda-llama-quantize": "llama-quantize.exe",
+    "cuda-llama-perplexity": "llama-perplexity.exe",
+}
 
 
 def _sha256(path: Path) -> str:
@@ -88,6 +93,16 @@ def verify_vendor(vendor_root: Path) -> dict[str, str]:
         name: str(indexed[name].resolve())
         for name in sorted(REQUIRED_STEMS)
     } | {"convert_hf_to_gguf.py": str(converters[0].resolve())}
+    cuda_root = vendor_root / "cuda"
+    if cuda_root.is_dir():
+        eula = cuda_root / "LICENSE.NVIDIA-CUDA-12.4.html"
+        if not eula.is_file():
+            raise RuntimeError("offline CUDA bundle is missing the NVIDIA EULA")
+        for name, filename in CUDA_FILENAMES.items():
+            path = cuda_root / filename
+            if not path.is_file():
+                raise RuntimeError(f"offline CUDA bundle is missing: {filename}")
+            verified[name] = str(path.resolve())
     for name, resolved in verified.items():
         entry = assets.get(name)
         if not isinstance(entry, dict) or not isinstance(entry.get("sha256"), str):

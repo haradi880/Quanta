@@ -31,7 +31,7 @@ test pass.
    .\build\verify_offline_release.ps1 `
      -DistributionPath .\dist\Quanta `
      -ModelPath C:\Models\acceptance.gguf `
-     -ExpectedExeSha256 44BD2B45D7625689615DBC1E5D09A916ED0DF49C00329B4A2E64B78F2DCC94A5
+     -ExpectedExeSha256 DB8D9E45A34EA79719BEA60331E018610CAB46D1D9E06DB022F09491A664AA26
    ```
 
 6. The verifier forces all supported Hugging Face/Transformers offline flags,
@@ -43,7 +43,10 @@ test pass.
 The binary automatically resolves bundled native tools. Its private frozen
 converter launcher executes the pinned converter and bundled `conversion/` and
 `gguf-py/` sources inside the frozen Python runtime. Runtime downloads are
-forbidden. Do not publish a release if `python -m build.verify_bundle` fails.
+forbidden. On Windows NVIDIA systems it selects the bundled CUDA 12.4
+llama.cpp runtime; otherwise it selects the CPU runtime. The CUDA Toolkit EULA
+is included under `_internal/vendor/cuda/`. Do not publish a release if
+`python -m build.verify_bundle` fails.
 
 ## Docker API
 

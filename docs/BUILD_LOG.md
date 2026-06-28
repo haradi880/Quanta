@@ -841,3 +841,32 @@ None.
   `44BD2B45D7625689615DBC1E5D09A916ED0DF49C00329B4A2E64B78F2DCC94A5`.
   A second disconnected Windows machine is still required before changing the
   clean-machine gate from “external verification required” to “passed.”
+
+## 2026-06-28 — Dual CPU/CUDA Windows runtime
+
+- Added pinned llama.cpp b9637 CUDA 12.4 executables (archive SHA-256
+  `e0080832743b478fc3d1a465c2d281091c3e02145d70ad06ad181f81895270a8`)
+  and its matching redistributable CUDA runtime package (archive SHA-256
+  `8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6`).
+- NVIDIA’s CUDA 12.4 deployment guidance permits bundling the exact linked
+  runtime libraries, and Attachment A lists the runtime/BLAS DLL classes as
+  redistributable. The vendor payload includes
+  `LICENSE.NVIDIA-CUDA-12.4.html`.
+- Native runtime discovery now selects `vendor/cuda/` only when `nvidia-smi`
+  reports an NVIDIA GPU; CPU remains the deterministic fallback and explicit
+  environment overrides remain untouched.
+- All CPU/CUDA release archives are checksum-cached, eliminating repeated
+  650 MB downloads during deterministic rebuilds.
+- The populated vendor verifier passed with nine required assets. The CUDA
+  executable loaded and returned the pinned b9637 version on the CPU-only
+  build host; real GPU offload remains an external hardware gate.
+- Rebuilt the final dual-runtime `dist/Quanta` distribution: 17,387 files,
+  2,800,061,302 bytes. `Quanta.exe` SHA-256 is
+  `DB8D9E45A34EA79719BEA60331E018610CAB46D1D9E06DB022F09491A664AA26`.
+- Packaged doctor and the no-Python offline local-GGUF verifier both passed
+  after CUDA inclusion. The packaged CUDA executable hash exactly matches the
+  verified vendor source, and the NVIDIA CUDA 12.4 EULA is present in
+  `_internal/vendor/cuda/`.
+- Final local regression evidence after dual-runtime integration: 159 passed,
+  one optional integration test skipped, and 80.30% branch-aware core
+  coverage.

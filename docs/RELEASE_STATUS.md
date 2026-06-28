@@ -10,7 +10,7 @@ static inspection alone are labeled separately.
 |---|---|---|
 | v3.1 contracts and authenticated lifecycle | Passed | Strict schema, FSM, auth, and lifecycle tests |
 | CPU GGUF inference | Passed | Bundled `llama-completion` generated a real tiny-model continuation through `GGUFWorker` |
-| CUDA GGUF inference | External verification required | Current Windows host has no NVIDIA driver or `nvidia-smi` |
+| CUDA GGUF inference | External verification required | Pinned CUDA 12.4 executable/runtime and EULA are bundled and loadable; current host has no NVIDIA driver or `nvidia-smi` for real offload |
 | Full-precision conversion/quantization | Passed | Bundled quantizer converted F32 GGUF (93.11 MiB) to Q4_0 (17.50 MiB) |
 | Three-domain perplexity | Passed | Real logic, retrieval, and code reference/candidate evaluation |
 | Golden-prompt reporting | Passed | Real golden item emitted alongside composite scoring |
@@ -19,7 +19,7 @@ static inspection alone are labeled separately.
 | Cancellation and forced-kill teardown | Passed by automated integration test | Worker tree harvesting and forced-kill coverage |
 | Five-phase purge | Passed by automated integration test | Ordering, unsafe-root, symlink, CLI, and GUI confirmation coverage |
 | Local Garnet lifecycle | Passed | Real bundled `PING`, `HSET`, `HGETALL`, `SCAN`, and clean stop |
-| Vendor integrity and notices | Passed | Six required assets plus full SHA-256 inventory; Garnet/.NET notices bundled |
+| Vendor integrity and notices | Passed | Nine required CPU/CUDA/Garnet assets plus full SHA-256 inventory; llama.cpp, NVIDIA CUDA, Garnet, and .NET notices/licenses bundled |
 | One-dir executable build | Passed on build host | Packaged executable, packaged doctor, and local-GGUF CLI lifecycle passed |
 | Clean-machine offline execution | External verification required | Build-host local-GGUF lifecycle passes; run `build/verify_offline_release.ps1` on a second disconnected Windows machine |
 | Security/dependency checks | Passed and CI-enforced | pip-audit, Bandit medium/high scan, and tracked-production secret signatures |
