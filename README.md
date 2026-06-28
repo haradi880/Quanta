@@ -142,6 +142,13 @@ Notebook users call `notebooks.adapter.run("owner/model")`. The desktop GUI
 reads its session JWT from `HARADIBOTS_SESSION_JWT` or
 `$HARADIBOTS_CACHE_ROOT/session.jwt`. No interface imports an execution engine.
 
+CLI, Kaggle, and Colab direct calls automatically create a private local
+credential under `$HARADIBOTS_CACHE_ROOT/auth/local.key`; users do not need to
+create or supply an API key. The FastAPI gateway still requires explicit
+header authentication. Notebook environments should install
+`requirements-notebook.txt`, which excludes platform-specific compiled
+backends and preserves the runtime-provided Torch build.
+
 ## Prompt and context control
 
 `core.prompt_controller.format_system_prompt()` formats system prompts for

@@ -10,6 +10,7 @@ from uuid import uuid4
 import nest_asyncio
 from tqdm.auto import tqdm
 
+from core.auth_middleware import ensure_local_api_key
 from core.orchestrator import process_job
 from core.schemas import (
     AuthBlock,
@@ -32,19 +33,10 @@ def notebook_environment() -> str:
 
 
 def read_api_key(secret_name: str = "HARADIBOTS_API_KEY") -> str:
-    if notebook_environment() == "kaggle":
-        try:
-            from kaggle_secrets import UserSecretsClient
+    """Return an automatically managed local key; no notebook secret is needed."""
 
-            value = UserSecretsClient().get_secret(secret_name)
-            if value:
-                return value
-        except (ImportError, KeyError):
-            pass
-    value = os.environ.get(secret_name)
-    if not value:
-        raise RuntimeError(f"notebook secret {secret_name} is required")
-    return value
+    del secret_name
+    return ensure_local_api_key()
 
 
 def build_envelope(model: str, mode: str = "auto") -> JobEnvelope:

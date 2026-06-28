@@ -81,6 +81,11 @@ mTLS, Ray, SLURM, and Kubernetes adapters arrive in the optional cluster phase.
 
 `cli/` serializes terminal input into authenticated job envelopes and streams
 Orchestrator events with rich progress. It never calls execution engines.
+Trusted direct CLI and notebook interfaces bootstrap an internal local
+credential automatically. This preserves the mandatory `AuthBlock` and
+authentication gate without imposing API-key setup on single-machine users.
+The network API boundary never uses this bootstrap and continues to require an
+explicit caller credential.
 
 `ui/` provides a tkinter desktop interface. It runs the Orchestrator stream on
 a dedicated worker thread and drains events on the GUI main loop.

@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +30,74 @@ request_identity: ContextVar[dict[str, Any] | None] = ContextVar(
 
 class AuthError(Exception):
     """Raised when supplied credentials cannot be authenticated."""
+
+
+def _local_key_path() -> Path:
+    cache_root = Path(
+        os.environ.get(
+            "HARADIBOTS_CACHE_ROOT",
+            str(Path.home() / ".haradibots" / "cache"),
+        )
+    ).expanduser()
+    return cache_root / "auth" / "local.key"
+
+
+def ensure_local_api_key(
+    credentials_path: Path | str = DEFAULT_CREDENTIALS_PATH,
+) -> str:
+    """Create or reuse an internal credential for trusted local interfaces."""
+
+    store_path = Path(credentials_path)
+    key_path = _local_key_path()
+    try:
+        existing_key = key_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        existing_key = ""
+    if existing_key:
+        try:
+            validate_api_key(existing_key, store_path)
+            return existing_key
+        except AuthError:
+            pass
+
+    api_key = f"hb_local_{secrets.token_urlsafe(32)}"
+    key_hash = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+    try:
+        store = json.loads(store_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        store = {"credentials": []}
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AuthError("credential store is unavailable or invalid") from exc
+    if not isinstance(store, dict) or not isinstance(store.get("credentials"), list):
+        raise AuthError("credential store must contain a credentials array")
+    store["credentials"].append(
+        {
+            "id": f"local-{secrets.token_hex(8)}",
+            "subject": "trusted-local-interface",
+            "key_hash": key_hash,
+            "revoked": False,
+            "scopes": ["jobs:run", "jobs:read", "jobs:purge"],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    store_tmp = store_path.with_suffix(store_path.suffix + ".tmp")
+    store_tmp.write_text(
+        json.dumps(store, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    store_tmp.replace(store_path)
+
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    key_tmp = key_path.with_suffix(".tmp")
+    key_tmp.write_text(api_key + "\n", encoding="utf-8")
+    key_tmp.replace(key_path)
+    try:
+        key_path.chmod(0o600)
+    except OSError:
+        pass
+    return api_key
 
 
 def load_credentials(path: Path | str = DEFAULT_CREDENTIALS_PATH) -> list[dict[str, Any]]:

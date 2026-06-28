@@ -25,7 +25,7 @@ def event_for(job_id):
 
 
 def test_cli_builds_exact_authenticated_envelope(monkeypatch):
-    monkeypatch.setenv("HARADIBOTS_API_KEY", "test-key")
+    monkeypatch.setattr("cli.main.ensure_local_api_key", lambda: "test-key")
     args = build_parser().parse_args(["run", "--model", "owner/model"])
 
     envelope = build_cli_envelope(args)
@@ -73,7 +73,10 @@ def test_api_returns_sse_for_valid_envelope(monkeypatch):
 
 def test_gui_and_notebook_use_their_contract_interfaces(monkeypatch):
     gui = build_gui_envelope("owner/model", "auto", "placeholder.jwt")
-    monkeypatch.setenv("HARADIBOTS_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "notebooks.adapter.ensure_local_api_key",
+        lambda: "test-key",
+    )
     notebook = build_notebook_envelope("owner/model")
 
     assert gui.interface.value == "gui"
@@ -103,7 +106,7 @@ def test_interface_modules_never_import_engines():
 def test_notebook_async_stream_is_compatible(monkeypatch):
     import notebooks.adapter as adapter
 
-    monkeypatch.setenv("HARADIBOTS_API_KEY", "test-key")
+    monkeypatch.setattr(adapter, "ensure_local_api_key", lambda: "test-key")
 
     async def fake_process_job(job):
         yield event_for(job.job_id)

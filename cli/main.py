@@ -11,6 +11,7 @@ from uuid import uuid4
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from core.auth_middleware import ensure_local_api_key
 from core.orchestrator import process_job
 from core.schemas import (
     AuthBlock,
@@ -27,9 +28,7 @@ console = Console()
 
 
 def build_envelope(args: argparse.Namespace) -> JobEnvelope:
-    api_key = os.environ.get("HARADIBOTS_API_KEY")
-    if not api_key:
-        raise RuntimeError("HARADIBOTS_API_KEY is required")
+    api_key = ensure_local_api_key()
     source = (
         ModelSource(local_path=args.model)
         if os.path.exists(args.model)

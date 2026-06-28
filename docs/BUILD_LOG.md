@@ -496,3 +496,17 @@ None.
 ### Questions asked and answers
 
 None.
+## 2026-06-28 — Trusted Local Authentication Bootstrap
+
+### Changes
+
+- Added automatic private local credentials for direct CLI, Kaggle, and Colab use.
+- Preserved the mandatory §1.2 `AuthBlock` and authentication middleware path.
+- Kept FastAPI/server authentication explicit and unchanged.
+- Added `requirements-notebook.txt` without AutoGPTQ, AutoAWQ, or a forced Torch downgrade for Python 3.12 notebook runtimes.
+
+### Verification
+
+- Local credentials are reused, validate successfully, and never appear as plaintext in `credentials.json`.
+- CLI and notebook envelope tests require no environment or notebook secret.
+- `python -m pytest tests -q` returned `28 passed`.
