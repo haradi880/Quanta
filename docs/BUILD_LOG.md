@@ -589,3 +589,20 @@ None.
 - GGUF command tests cover full-precision conversion and direct requantization.
 - Backend-routing tests prove Q4, AWQ, and EXL2 targets select compatible workers and unsupported GPTQ fails explicitly.
 - A full simulated quantization lifecycle proves the emitted artifact becomes the validation candidate before teardown.
+## 2026-06-28 — Fault Tolerance, Purge, and Local Redis
+
+### Changes
+
+- Implemented all five degradation policy transformations.
+- Added three OOM retries with 50% batch reduction, hardware-aware CPU fallback, and emergency abort preserving partial artifacts.
+- Implemented the five-phase purge sequence with unsafe-root rejection and no symlink traversal.
+- Added exact CLI and GUI double confirmation; only uppercase `CONFIRM` executes purge.
+- Added bundled local Redis process ownership with loopback binding, protected mode, readiness probing, hidden Windows launch, and graceful stop.
+
+### Verification
+
+- OOM simulation emits Tier 3 three times, then replans to Tier 4 with P-core affinity.
+- Purge tests prove workers are harvested while files/tables still exist, then tables are dropped, pools close, files delete, and pristine placeholders return.
+- Dangerous home/current/root paths are rejected.
+- CLI confirmation tests prove lowercase confirmation performs no deletion.
+- Redis tests prove an existing loopback Redis is reused and a missing bundled binary fails clearly.

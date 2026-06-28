@@ -23,6 +23,7 @@ from core.artifacts import (
 from core.auth_middleware import authenticate
 from core.hf_inspector import inspect_repo
 from core.profiler import snapshot
+from core.purge import sanitize_cache
 from core.schemas import (
     ArtifactReference,
     ErrorEnvelope,
@@ -103,6 +104,65 @@ class Orchestrator:
     def _set_initial_state(self, job_id: UUID) -> None:
         self._job_states[job_id] = JobState.IDLE
         self._state_history[job_id] = [JobState.IDLE]
+
+    @staticmethod
+    def _degrade(
+        tier: int,
+        reason: str,
+        *,
+        strategy: dict[str, Any] | None = None,
+        hardware: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Apply one exact §4.1 degradation tier to a strategy copy."""
+
+        if tier not in {1, 2, 3, 4, 5}:
+            raise ValueError("degradation tier must be between 1 and 5")
+        degraded = dict(strategy or {})
+        payload: dict[str, Any] = {
+            "tier": tier,
+            "reason": reason,
+            "strategy": degraded,
+            "retry": False,
+            "abort": False,
+            "preserve_partial_artifacts": False,
+        }
+        if tier == 1:
+            degraded.update(
+                {"backend": "llama.cpp", "format": "Q4_K_M", "gpu_layers": 0}
+            )
+            payload["action"] = "force_gguf_cpu"
+        elif tier == 2:
+            degraded["partial_offload"] = True
+            degraded["gpu_layers"] = "calculated"
+            payload["action"] = "enable_partial_offload"
+        elif tier == 3:
+            batch_size = max(int(degraded.get("batch_size", 1)), 1)
+            degraded["batch_size"] = max(batch_size // 2, 1)
+            degraded["max_retries"] = 3
+            payload.update({"action": "halve_batch_and_retry", "retry": True})
+        elif tier == 4:
+            cpu = (hardware or {}).get("cpu", {})
+            p_cores = cpu.get("p_core_ids") or []
+            physical = max(int(cpu.get("physical_cores", 1)), 1)
+            degraded.update(
+                {
+                    "backend": "llama.cpp",
+                    "format": "Q4_K_M",
+                    "gpu_layers": 0,
+                    "threads": len(p_cores) if p_cores else max(physical - 1, 1),
+                    "thread_affinity": list(p_cores),
+                }
+            )
+            payload["action"] = "cpu_hardware_aware_fallback"
+        else:
+            payload.update(
+                {
+                    "action": "abort_preserve_partial_artifacts",
+                    "abort": True,
+                    "preserve_partial_artifacts": True,
+                }
+            )
+        return payload
 
     @staticmethod
     def _apply_target_backend(
@@ -231,6 +291,21 @@ class Orchestrator:
         """Return an immutable view of handles currently owned by a job."""
 
         return tuple(self._worker_registry.get(job_id, ()))
+
+    async def purge(self, job_id: UUID | None = None) -> dict[str, object]:
+        """Run the irreversible five-phase local sanitization sequence."""
+
+        async def teardown_all() -> None:
+            job_ids = (
+                [job_id]
+                if job_id is not None
+                else list(self._worker_registry)
+            )
+            for active_job_id in job_ids:
+                if active_job_id in self._worker_registry:
+                    await self._teardown(active_job_id)
+
+        return await sanitize_cache(teardown_all)
 
     def _create_and_register_worker(
         self,
@@ -393,6 +468,7 @@ class Orchestrator:
         """Harvest every registered worker using TERM then KILL escalation."""
 
         handles = self._enumerate_job_handles(job_id)
+        registered = tuple(self._worker_registry.get(job_id, ()))
         harvested_pids = [
             pid
             for pid in (self._pid_for(handle) for handle in handles)
@@ -400,7 +476,7 @@ class Orchestrator:
         ]
 
         for handle in reversed(handles):
-            if self._is_alive(handle):
+            if self._is_alive(handle) or any(handle is root for root in registered):
                 await self._call_process_method(handle, "terminate")
 
         if handles:
@@ -486,6 +562,82 @@ class Orchestrator:
                     raise RuntimeError(
                         str(event.payload.get("message", "worker execution failed"))
                     )
+
+    async def _execute_with_degradation(
+        self,
+        envelope: JobEnvelope,
+        strategy: dict[str, Any],
+        hardware: dict[str, Any],
+    ) -> AsyncIterator[ProgressEvent]:
+        """Retry OOM three times, then replan once for hardware-aware CPU."""
+
+        attempt = 0
+        cpu_fallback_used = False
+        while True:
+            try:
+                async for event in self._execute_registered_workers(
+                    envelope,
+                    strategy,
+                ):
+                    if event.event_type is not EventType.ERROR:
+                        yield event
+                return
+            except RuntimeError as exc:
+                message = str(exc)
+                is_oom = "out of memory" in message.lower() or "cuda oom" in message.lower()
+                if not is_oom:
+                    raise
+                if attempt < 3:
+                    attempt += 1
+                    degradation = self._degrade(
+                        3,
+                        message,
+                        strategy=strategy,
+                        hardware=hardware,
+                    )
+                    strategy.update(degradation["strategy"])
+                    yield self._event(
+                        envelope,
+                        EventType.DEGRADATION_WARNING,
+                        {**degradation, "attempt": attempt},
+                    )
+                    continue
+                if cpu_fallback_used:
+                    emergency = self._degrade(
+                        5,
+                        message,
+                        strategy=strategy,
+                        hardware=hardware,
+                    )
+                    yield self._event(
+                        envelope,
+                        EventType.EMERGENCY_STOP,
+                        emergency,
+                    )
+                    raise RuntimeError(
+                        "system memory exhausted after CPU fallback; partial "
+                        "artifacts were preserved"
+                    ) from exc
+                cpu_fallback_used = True
+                degradation = self._degrade(
+                    4,
+                    message,
+                    strategy=strategy,
+                    hardware=hardware,
+                )
+                strategy.update(degradation["strategy"])
+                await self._teardown(envelope.job_id)
+                if not strategy.get("model_path") and envelope.source_model.repo_id:
+                    strategy["model_path"] = await acquire_source_snapshot(
+                        envelope.source_model.repo_id,
+                        revision=envelope.source_model.revision,
+                    )
+                self._create_and_register_worker(envelope, strategy)
+                yield self._event(
+                    envelope,
+                    EventType.DEGRADATION_WARNING,
+                    degradation,
+                )
 
     async def _validate_registered_workers(
         self,
@@ -755,9 +907,10 @@ class Orchestrator:
             )
 
             produced_artifact = None
-            async for worker_event in self._execute_registered_workers(
+            async for worker_event in self._execute_with_degradation(
                 envelope,
                 execution_strategy,
+                hardware,
             ):
                 output_path = worker_event.payload.get("output_path")
                 if isinstance(output_path, str):
@@ -867,3 +1020,9 @@ async def process_job(envelope: JobEnvelope) -> AsyncIterator[ProgressEvent]:
 
     async for event in _DEFAULT_ORCHESTRATOR.process_job(envelope):
         yield event
+
+
+async def purge(job_id: UUID | None = None) -> dict[str, object]:
+    """Module-level purge entry point used by trusted local interfaces."""
+
+    return await _DEFAULT_ORCHESTRATOR.purge(job_id)

@@ -171,6 +171,19 @@ Ray, SLURM, Kubernetes, PostgreSQL, remote Prometheus, and mTLS cluster behavior
 remain optional server features. Cluster work must not begin until the
 single-node production gate passes.
 
+## 7.1 Fault tolerance and irreversible purge
+
+OOM recovery halves batch size for three retries before rebuilding execution on
+the CPU GGUF backend with detected P-core affinity. CPU-path exhaustion emits
+an emergency stop and preserves partial artifacts.
+
+Purge is ordered as an irreversible transaction boundary: harvest registered
+workers, drop managed SQLite tables while connected, checkpoint and close
+SQLite plus Redis pools/processes, delete cache entries deepest-first without
+following symlinks, then recreate a pristine fixed directory tree. Unsafe roots
+are rejected before any mutation. CLI and GUI both require a warning
+acknowledgement followed by the exact text `CONFIRM`.
+
 ## 8. Production acceptance gate
 
 The project is not production-ready until all of the following are evidenced:

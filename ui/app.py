@@ -11,9 +11,9 @@ from pathlib import Path
 from uuid import uuid4
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 
-from core.orchestrator import process_job
+from core.orchestrator import process_job, purge as purge_runtime
 from core.schemas import (
     AuthBlock,
     CallbackConfig,
@@ -101,6 +101,9 @@ class HaradiBotsApp:
         ).grid(row=2, column=1, sticky="w")
         self.submit = ttk.Button(frame, text="Run", command=self._submit)
         self.submit.grid(row=2, column=2, sticky="e")
+        ttk.Button(frame, text="Purge", command=self._purge).grid(
+            row=3, column=2, sticky="e"
+        )
         ttk.Label(frame, textvariable=self.state).grid(
             row=3, column=0, columnspan=3, sticky="w"
         )
@@ -129,6 +132,36 @@ class HaradiBotsApp:
             daemon=True,
         ).start()
 
+    def _purge(self) -> None:
+        warning = (
+            "This permanently deletes local models, outputs, validation data, "
+            "credentials, logs, and job history after terminating all workers."
+        )
+        if not messagebox.askokcancel("HaradiBots Nuclear Option", warning):
+            return
+        confirmation = simpledialog.askstring(
+            "Confirm purge",
+            "Type CONFIRM exactly:",
+            parent=self.root,
+        )
+        if confirmation != "CONFIRM":
+            messagebox.showinfo("HaradiBots", "Purge aborted; nothing was deleted.")
+            return
+        self.submit.state(["disabled"])
+
+        async def run_purge() -> None:
+            try:
+                self.events.put(await purge_runtime())
+            except Exception as exc:
+                self.events.put(exc)
+            finally:
+                self.events.put(None)
+
+        threading.Thread(
+            target=lambda: asyncio.run(run_purge()),
+            daemon=True,
+        ).start()
+
     async def _run(self, envelope: JobEnvelope) -> None:
         try:
             async for event in process_job(envelope):
@@ -148,6 +181,11 @@ class HaradiBotsApp:
                 self.submit.state(["!disabled"])
             elif isinstance(item, Exception):
                 self.state.set(f"ERROR: {item}")
+            elif isinstance(item, dict):
+                self.state.set("PURGE COMPLETE")
+                self.results.configure(state="normal")
+                self.results.insert("end", json.dumps(item, indent=2) + "\n")
+                self.results.configure(state="disabled")
             else:
                 state = item.payload.get("state", item.event_type.value)
                 self.state.set(str(state))

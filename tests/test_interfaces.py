@@ -34,6 +34,25 @@ def test_cli_builds_exact_authenticated_envelope(monkeypatch):
     assert envelope.interface.value == "cli"
 
 
+def test_cli_purge_requires_exact_second_confirmation(monkeypatch):
+    import cli.main as cli
+
+    called = []
+
+    async def fake_purge():
+        called.append(True)
+        return {"deleted_entries": 0}
+
+    monkeypatch.setattr(cli, "purge_runtime", fake_purge)
+    monkeypatch.setattr(cli.console, "input", lambda prompt: "confirm")
+    assert cli.main(["purge"]) == 2
+    assert called == []
+
+    monkeypatch.setattr(cli.console, "input", lambda prompt: "CONFIRM")
+    assert cli.main(["purge"]) == 0
+    assert called == [True]
+
+
 def test_api_rejects_missing_header():
     from cluster.api_server import app
 

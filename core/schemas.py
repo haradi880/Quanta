@@ -54,6 +54,8 @@ class EventType(StrEnum):
     TELEMETRY_TICK = "telemetry_tick"
     CLUSTER_NODE_STATUS = "cluster_node_status"
     CLUSTER_DEGRADED_WARNING = "cluster_degraded_warning"
+    DEGRADATION_WARNING = "degradation_warning"
+    EMERGENCY_STOP = "emergency_stop"
     TEARDOWN_COMPLETE = "teardown_complete"
     ERROR = "error"
     COMPLETE = "complete"
