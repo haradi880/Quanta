@@ -2,7 +2,6 @@ import ast
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
 
 from fastapi.testclient import TestClient
 

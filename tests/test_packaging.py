@@ -54,7 +54,7 @@ def test_bundle_verifier_and_runtime_resolver_cover_all_native_tools(
 
     configured = configure_native_runtime(tmp_path)
 
-    assert len(verified) == 5
+    assert len(verified) == len(REQUIRED_STEMS) + 1
     assert set(configured) == set(NATIVE_ENV.values())
     assert all(Path(value).is_file() for value in configured.values())
 

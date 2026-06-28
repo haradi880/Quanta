@@ -10,12 +10,14 @@ from pathlib import Path
 
 REQUIRED_STEMS = {
     "llama-cli",
+    "llama-completion",
     "llama-quantize",
     "llama-perplexity",
     "garnet-server",
 }
 REQUIRED_FILENAMES = {
     "llama-cli": "llama-cli.exe",
+    "llama-completion": "llama-completion.exe",
     "llama-quantize": "llama-quantize.exe",
     "llama-perplexity": "llama-perplexity.exe",
     "garnet-server": "GarnetServer.exe",

@@ -60,7 +60,7 @@ def test_offline_doctor_checks_all_native_assets_and_redis(tmp_path, monkeypatch
     assert result["redis_stopped"] is True
     assert result["resp_checks"]["PING"] == "PONG"
     assert {name for name, _ in probed} == {
-        "llama-cli",
+        "llama-completion",
         "llama-quantize",
         "llama-perplexity",
     }

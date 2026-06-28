@@ -9,7 +9,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from core.accelerator import calc_perplexity, generate_retrieval_prompt, get_severity_tier
 from core.schemas import (
@@ -87,6 +87,13 @@ class LlamaPerplexityEvaluator:
         r"([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)",
         re.IGNORECASE,
     )
+    _CHUNK_PPL_PATTERN = re.compile(
+        r"\[\d+\]([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)"
+    )
+    _SHORT_INPUT_PATTERN = re.compile(
+        r"need at least (\d+) tokens.*tokenizes to only (\d+) tokens",
+        re.IGNORECASE | re.DOTALL,
+    )
 
     def __init__(
         self,
@@ -122,21 +129,34 @@ class LlamaPerplexityEvaluator:
         )
         os.close(descriptor)
         path = Path(text_path)
-        path.write_text(text, encoding="utf-8")
+        evaluation_text = text
         try:
-            process = await asyncio.create_subprocess_exec(
-                self.binary_path,
-                "-m",
-                self.model_path,
-                "-f",
-                str(path),
-                "-c",
-                str(self.max_context_length),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            stdout, _ = await process.communicate()
-            output = stdout.decode("utf-8", errors="replace")
+            output = ""
+            process = None
+            for _ in range(2):
+                path.write_text(evaluation_text, encoding="utf-8")
+                process = await asyncio.create_subprocess_exec(
+                    self.binary_path,
+                    "-m",
+                    self.model_path,
+                    "-f",
+                    str(path),
+                    "-c",
+                    str(self.max_context_length),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+                stdout, _ = await process.communicate()
+                output = stdout.decode("utf-8", errors="replace")
+                short = self._SHORT_INPUT_PATTERN.search(output)
+                if not short:
+                    break
+                required, actual = (int(value) for value in short.groups())
+                if actual <= 0:
+                    break
+                repetitions = math.ceil(required / actual) + 1
+                evaluation_text = "\n".join([text] * repetitions)
+            assert process is not None
             if process.returncode != 0:
                 raise RuntimeError(
                     f"llama-perplexity exited with code {process.returncode}: "
@@ -144,7 +164,13 @@ class LlamaPerplexityEvaluator:
                 )
             matches = self._PPL_PATTERN.findall(output)
             if not matches:
-                raise RuntimeError("llama-perplexity output contains no final PPL")
+                # Short inputs may produce only cumulative chunk estimates.
+                matches = self._CHUNK_PPL_PATTERN.findall(output)
+            if not matches:
+                raise RuntimeError(
+                    "llama-perplexity output contains no final PPL: "
+                    f"{output[-500:]}"
+                )
             value = float(matches[-1])
             if not math.isfinite(value) or value <= 0:
                 raise RuntimeError("llama-perplexity returned an invalid PPL")

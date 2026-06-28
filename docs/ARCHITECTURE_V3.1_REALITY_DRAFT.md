@@ -14,7 +14,8 @@ acceptance remains explicitly separate from implementation completeness.
   automated coverage.
 - GGUF repositories can now be resolved to a sandboxed local artifact and
   parsed for planning metadata.
-- SQLite stores job metadata only. Local Redis is the standalone hot path.
+- SQLite stores job metadata only. Bundled local Garnet is the standalone RESP
+  hot path.
 - Automated suite status at this revision: 140 passed, one intentionally
   skipped, with 80.03% branch-aware coverage across `core/`.
 
@@ -159,7 +160,7 @@ quarantined. Missing validation is a failure, not a pass.
 The primary target remains a single-machine Enterprise Fat Binary:
 
 - dependencies and llama.cpp binaries are bundled;
-- Redis runs locally as a managed child process;
+- Garnet runs locally as a managed child process;
 - SQLite stores local metadata;
 - no runtime compiler or background dependency download is required.
 
@@ -185,7 +186,7 @@ an emergency stop and preserves partial artifacts.
 
 Purge is ordered as an irreversible transaction boundary: harvest registered
 workers, drop managed SQLite tables while connected, checkpoint and close
-SQLite plus Redis pools/processes, delete cache entries deepest-first without
+SQLite plus Garnet pools/processes, delete cache entries deepest-first without
 following symlinks, then recreate a pristine fixed directory tree. Unsafe roots
 are rejected before any mutation. CLI and GUI both require a warning
 acknowledgement followed by the exact text `CONFIRM`.
@@ -201,7 +202,7 @@ The project is not production-ready until all of the following are evidenced:
 - poor/critical delivery controls;
 - persistence and restart recovery;
 - cancellation and forced-kill teardown;
-- local Redis lifecycle management;
+- local Garnet lifecycle management;
 - packaged offline Fat Binary execution on a clean Windows machine;
 - security, dependency, and artifact-integrity checks;
 - coverage and integration tests required by Phase 14.

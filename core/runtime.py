@@ -8,14 +8,14 @@ from pathlib import Path
 
 
 NATIVE_ENV = {
-    "llama-cli": "HARADIBOTS_LLAMA_BIN",
+    "llama-completion": "HARADIBOTS_LLAMA_BIN",
     "llama-quantize": "HARADIBOTS_LLAMA_QUANTIZE_BIN",
     "llama-perplexity": "HARADIBOTS_LLAMA_PERPLEXITY_BIN",
     "garnet-server": "HARADIBOTS_GARNET_BIN",
     "convert_hf_to_gguf.py": "HARADIBOTS_GGUF_CONVERT_SCRIPT",
 }
 NATIVE_FILENAMES = {
-    "llama-cli": "llama-cli.exe",
+    "llama-completion": "llama-completion.exe",
     "llama-quantize": "llama-quantize.exe",
     "llama-perplexity": "llama-perplexity.exe",
     "garnet-server": "GarnetServer.exe",

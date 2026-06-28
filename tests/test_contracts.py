@@ -14,7 +14,6 @@ from core.schemas import (
     ModelMetaProfile,
     ProgressEvent,
     SystemPrompt,
-    TargetConfig,
     ValidationPolicy,
 )
 

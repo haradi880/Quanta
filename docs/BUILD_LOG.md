@@ -758,3 +758,24 @@ None.
   `LICENSE.dotnet-library.html`, and `NOTICE.dotnet-third-party.txt`.
 - Full local regression evidence after integration: 149 passed, one optional
   cluster test skipped, and 80.25% branch-aware core coverage.
+
+## 2026-06-28 — Live GGUF lifecycle correction and validation
+
+- Corrected the inference runtime from interactive `llama-cli` to
+  noninteractive `llama-completion`; both executables remain bundled, while
+  `HARADIBOTS_LLAMA_BIN` now resolves to `llama-completion.exe`.
+- Ran `GGUFWorker` against `stories15M-quanta-q4_0.gguf`: it emitted 35
+  streamed events, generated the expected “little girl named Lily”
+  continuation, exited successfully, and emitted a final 100% complete event.
+- Quantized the upstream F32 `stories15M.gguf` with the bundled
+  `llama-quantize` to Q4_0: 93.11 MiB became 17.50 MiB and the output artifact
+  was non-empty and loadable.
+- Updated `llama-perplexity` handling for current b9637 output: short samples
+  are expanded only after the executable reports its exact minimum-token
+  requirement, and cumulative chunk estimates are accepted when no separate
+  final line is emitted.
+- Ran real reference-versus-candidate validation over logic, retrieval, code,
+  and one golden prompt. The Q4 candidate produced composite delta
+  `476.912549`, severity `critical`, and `quarantined=true`; the golden item
+  passed. This verifies the safety gate rejects a materially degraded
+  candidate rather than treating successful quantization as acceptance.

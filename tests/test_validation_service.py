@@ -87,6 +87,24 @@ def test_llama_perplexity_parser_accepts_realistic_final_line():
     assert LlamaPerplexityEvaluator._PPL_PATTERN.findall(output)[-1] == "12.3456"
 
 
+def test_llama_perplexity_parser_accepts_short_input_chunk_estimate():
+    output = "0.00 minutes\\n[1]7.1250,[2]6.7500,"
+
+    assert LlamaPerplexityEvaluator._CHUNK_PPL_PATTERN.findall(output)[-1] == "6.7500"
+
+
+def test_llama_perplexity_parser_detects_short_input_requirement():
+    output = (
+        "you need at least 256 tokens to evaluate perplexity with a context of 128\\n"
+        "the data file you provided tokenizes to only 49 tokens"
+    )
+
+    assert LlamaPerplexityEvaluator._SHORT_INPUT_PATTERN.search(output).groups() == (
+        "256",
+        "49",
+    )
+
+
 def test_validate_operation_persists_strict_result(tmp_path, monkeypatch):
     import core.orchestrator as module
     from telemetry.db import create_database, get_job, get_validation_result

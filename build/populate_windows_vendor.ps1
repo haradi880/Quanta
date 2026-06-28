@@ -112,7 +112,7 @@ try {
     }
 
     $Assets = [ordered]@{}
-    foreach ($Name in @("llama-cli", "llama-quantize", "llama-perplexity")) {
+    foreach ($Name in @("llama-cli", "llama-completion", "llama-quantize", "llama-perplexity")) {
         $Path = Join-Path $Stage "$Name.exe"
         if (-not (Test-Path $Path -PathType Leaf)) {
             throw "llama.cpp archive is missing $Name.exe."

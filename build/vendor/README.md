@@ -8,7 +8,8 @@ This directory is populated deterministically by:
 
 The script builds and stages:
 
-- pinned official llama.cpp Windows CPU executables;
+- pinned official llama.cpp Windows CPU executables, including
+  `llama-completion` for noninteractive inference;
 - matching `convert_hf_to_gguf.py`, `conversion/`, and `gguf-py/`;
 - Microsoft Garnet v1.1.10 as a self-contained native Windows x64 RESP server;
 - Garnet’s MIT `LICENSE` and `NOTICE.md`;

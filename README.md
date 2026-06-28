@@ -114,7 +114,7 @@ Backend modules are safe to import without loading their ML libraries. The
 selected worker loads its backend only when instantiated.
 
 - GGUF uses only a llama.cpp subprocess. Set `HARADIBOTS_LLAMA_BIN` to the
-  platform-appropriate `llama-cli` or compatible binary.
+  platform-appropriate noninteractive `llama-completion` binary.
 - AWQ uses AutoAWQ when the selected strategy requests it.
 - EXL2 uses ExLlamaV2 and its official conversion script. Set
   `HARADIBOTS_EXL2_CONVERT_SCRIPT` to `convert.py`.
@@ -178,7 +178,7 @@ header authentication. Notebook environments should install
 backends and preserves the runtime-provided Torch build.
 
 For a real Kaggle/Colab GGUF smoke test, build llama.cpp in the notebook,
-set `HARADIBOTS_LLAMA_BIN` to its `llama-cli`, and use a GGUF repository such
+set `HARADIBOTS_LLAMA_BIN` to its `llama-completion`, and use a GGUF repository such
 as `ggml-org/tiny-llamas`. HaradiBots selects one compatible GGUF file,
 downloads it into the sandbox cache, reads its header metadata, and passes the
 resolved local file—not the repository name—to the worker.

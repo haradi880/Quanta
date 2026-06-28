@@ -81,7 +81,10 @@ async def run_offline_doctor() -> dict[str, Any]:
             raise RuntimeError(f"packaged converter dependency is missing: {dependency}")
 
     probes = {}
-    probes["llama-cli"] = await _probe_process(resolved["llama-cli"], "--version")
+    probes["llama-completion"] = await _probe_process(
+        resolved["llama-completion"],
+        "--version",
+    )
     probes["llama-quantize"] = await _probe_process(
         resolved["llama-quantize"],
         "--help",

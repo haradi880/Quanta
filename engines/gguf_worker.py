@@ -20,7 +20,7 @@ PERCENT_PATTERN = re.compile(r"(?<!\d)(\d{1,3}(?:\.\d+)?)\s*%")
 
 
 class GGUFWorker(BaseWorker):
-    """Manage llama-cli/llama-server as a subprocess, never a Python library."""
+    """Manage llama-completion as a subprocess, never a Python library."""
 
     def __init__(self, job_id: UUID, binary_path: str | None = None) -> None:
         super().__init__(job_id)
