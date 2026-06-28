@@ -18,6 +18,8 @@ try {
 
     & (Join-Path $RepoRoot "dist\HaradiBots\HaradiBots.exe") "--help"
     if ($LASTEXITCODE -ne 0) { throw "Packaged CLI smoke test failed." }
+    & (Join-Path $RepoRoot "dist\HaradiBots\HaradiBots.exe") "doctor" "--json"
+    if ($LASTEXITCODE -ne 0) { throw "Packaged native runtime check failed." }
 } finally {
     Pop-Location
 }

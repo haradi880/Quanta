@@ -8,6 +8,18 @@ from build.verify_bundle import REQUIRED_STEMS, verify_vendor
 from core.runtime import NATIVE_ENV, configure_native_runtime
 
 
+def write_manifest(root, assets):
+    files = {
+        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in root.rglob("*")
+        if path.is_file() and path.name not in {"vendor-manifest.json", "README.md"}
+    }
+    (root / "vendor-manifest.json").write_text(
+        json.dumps({"schema_version": "1", "assets": assets, "files": files}),
+        encoding="utf-8",
+    )
+
+
 def test_bundle_verifier_fails_closed_when_native_assets_are_missing(tmp_path):
     with pytest.raises(RuntimeError, match="offline bundle is incomplete"):
         verify_vendor(tmp_path)
@@ -21,16 +33,19 @@ def test_bundle_verifier_and_runtime_resolver_cover_all_native_tools(
     for stem in REQUIRED_STEMS:
         content = f"native-{stem}".encode()
         (tmp_path / f"{stem}.exe").write_bytes(content)
-        assets[stem] = {"sha256": hashlib.sha256(content).hexdigest()}
+        assets[stem] = {
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "source": "https://example.invalid/release",
+            "license": "MIT",
+        }
     converter = b"# converter"
     (tmp_path / "convert_hf_to_gguf.py").write_bytes(converter)
     assets["convert_hf_to_gguf.py"] = {
-        "sha256": hashlib.sha256(converter).hexdigest()
+        "sha256": hashlib.sha256(converter).hexdigest(),
+        "source": "https://example.invalid/source",
+        "license": "MIT",
     }
-    (tmp_path / "vendor-manifest.json").write_text(
-        json.dumps({"schema_version": "1", "assets": assets}),
-        encoding="utf-8",
-    )
+    write_manifest(tmp_path, assets)
     verified = verify_vendor(tmp_path)
     for variable in NATIVE_ENV.values():
         monkeypatch.delenv(variable, raising=False)
@@ -47,17 +62,22 @@ def test_bundle_verifier_rejects_tampered_native_asset(tmp_path):
     for stem in REQUIRED_STEMS:
         path = tmp_path / f"{stem}.exe"
         path.write_bytes(stem.encode())
-        assets[stem] = {"sha256": hashlib.sha256(stem.encode()).hexdigest()}
+        assets[stem] = {
+            "sha256": hashlib.sha256(stem.encode()).hexdigest(),
+            "source": "https://example.invalid/release",
+            "license": "MIT",
+        }
     converter = tmp_path / "convert_hf_to_gguf.py"
     converter.write_bytes(b"converter")
-    assets[converter.name] = {"sha256": hashlib.sha256(b"converter").hexdigest()}
-    (tmp_path / "vendor-manifest.json").write_text(
-        json.dumps({"schema_version": "1", "assets": assets}),
-        encoding="utf-8",
-    )
+    assets[converter.name] = {
+        "sha256": hashlib.sha256(b"converter").hexdigest(),
+        "source": "https://example.invalid/source",
+        "license": "MIT",
+    }
+    write_manifest(tmp_path, assets)
     (tmp_path / "llama-cli.exe").write_bytes(b"tampered")
 
-    with pytest.raises(RuntimeError, match="checksum mismatch for: llama-cli"):
+    with pytest.raises(RuntimeError, match="checksum mismatch for file: llama-cli.exe"):
         verify_vendor(tmp_path)
 
 
@@ -73,6 +93,8 @@ def test_packaging_manifests_are_offline_and_one_dir():
     assert "onefile" not in spec.lower()
     assert 'name="HaradiBots"' in spec
     assert 'parent.parent' in spec
+    assert '".exe", ".dll", ".pyd"' in spec
+    assert "datas.append" in spec
     assert "nvidia/cuda:12.2.0-runtime-ubuntu22.04" in dockerfile
     assert "USER haradibots" in dockerfile
     assert "cluster.api_server:app" in dockerfile

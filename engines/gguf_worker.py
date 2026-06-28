@@ -111,15 +111,17 @@ class GGUFWorker(BaseWorker):
                     "GGUF conversion requires HARADIBOTS_GGUF_CONVERT_SCRIPT"
                 )
             intermediate = work_path / "model-f16.gguf"
-            convert_command = [
-                sys.executable,
+            convert_command = [sys.executable]
+            if getattr(sys, "frozen", False):
+                convert_command.append("_convert-hf-to-gguf")
+            convert_command.extend([
                 str(Path(converter).resolve()),
                 str(source_path.resolve()),
                 "--outfile",
                 str(intermediate.resolve()),
                 "--outtype",
                 "f16",
-            ]
+            ])
         quantize_command = [
             str(Path(quantizer).resolve()),
             str(intermediate.resolve()),

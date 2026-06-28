@@ -7,20 +7,21 @@ test pass.
 
 ## Enterprise Fat Binary
 
-1. Place release-pinned native tools in `build/vendor/`:
-   `llama-cli`, `llama-quantize`, `llama-perplexity`,
-   `convert_hf_to_gguf.py`, and `redis-server`.
+1. Run `build/populate_windows_vendor.ps1` with a redistribution-approved
+   native Redis-compatible runtime. The script retrieves the pinned official
+   llama.cpp CPU release and converter source, preserves license notices, and
+   writes a full SHA-256 file inventory. See `build/vendor/README.md`.
 2. Verify the offline payload:
 
    ```powershell
-   python build/verify_bundle.py
+   python -m build.verify_bundle
    ```
 
 3. Install the release build tool and create the one-dir distribution:
 
    ```powershell
-   python -m pip install pyinstaller
-   pyinstaller --clean --noconfirm build/fat_binary.spec
+   python -m pip install -r requirements-dev.txt
+   .\build\build_windows.ps1 -Python python -Clean
    ```
 
 4. Copy `dist/HaradiBots/` to a clean machine with no Python installation.
@@ -28,13 +29,18 @@ test pass.
 
    ```powershell
    .\HaradiBots.exe --help
+   .\HaradiBots.exe doctor --json
    ```
 
-6. Submit a local GGUF inference job and verify no network call, import error,
-   or surviving worker process.
+6. The doctor must report all three llama.cpp tools, converter dependencies,
+   and a successful owned Redis start/PING/stop cycle. Then submit a local GGUF
+   inference job and verify no network call, import error, or surviving worker
+   process.
 
-The binary automatically resolves bundled native tools. Runtime downloads are
-forbidden. Do not publish a release if `build/verify_bundle.py` fails.
+The binary automatically resolves bundled native tools. Its private frozen
+converter launcher executes the pinned converter and bundled `conversion/` and
+`gguf-py/` sources inside the frozen Python runtime. Runtime downloads are
+forbidden. Do not publish a release if `python -m build.verify_bundle` fails.
 
 ## Docker API
 

@@ -699,3 +699,27 @@ None.
   behavior in a checkout without distributable native assets.
 - Local evidence: packaging/runtime unit tests pass; the actual release remains
   gated pending a redistribution-reviewed native manifest and payload.
+
+## 2026-06-28 — Deterministic native payload preparation
+
+- Pinned the official llama.cpp Windows CPU release at tag `b9637`, commit
+  `aedb2a5e9ca3d4064148bbb919e0ddc0c1b70ab3`, and verified its published
+  archive SHA-256 before extraction.
+- Added a vendor-population script that sparse-checks out the exact matching
+  converter, `conversion/`, `gguf-py/`, and MIT license.
+- The script requires an explicit redistribution-approval assertion plus the
+  source, license, executable, and complete runtime directory for a native
+  Redis-compatible Windows distribution. It does not use the abandoned
+  Microsoft Redis port.
+- Expanded the manifest to inventory and hash every bundled payload file, not
+  only the five executable entry points.
+- Added a private frozen HF-to-GGUF launcher and corrected PyInstaller handling:
+  executables and DLLs are binaries; Python converter sources and notices are
+  data. This fixes the invalid assumption that a frozen `HaradiBots.exe` can
+  execute an arbitrary Python script like `python.exe`.
+- Added `HaradiBots doctor --json`; release builds now probe all three
+  llama.cpp tools, converter dependencies, and an owned local Redis
+  start/PING/stop lifecycle after PyInstaller completes.
+- Local evidence: PowerShell scripts parse successfully; Ruff passes; 149
+  tests pass, one optional cluster test is skipped, and core branch coverage is
+  80.24%.

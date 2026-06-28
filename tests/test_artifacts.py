@@ -255,6 +255,32 @@ def test_gguf_quantization_commands_support_conversion_and_requantization(
     assert quantize[1] == str(existing.resolve())
 
 
+def test_gguf_frozen_conversion_uses_private_entrypoint(tmp_path, monkeypatch):
+    import engines.gguf_worker as module
+
+    converter = tmp_path / "convert_hf_to_gguf.py"
+    converter.write_text("# converter", encoding="utf-8")
+    quantizer = tmp_path / "llama-quantize.exe"
+    quantizer.write_bytes(b"binary")
+    source = tmp_path / "source"
+    source.mkdir()
+    monkeypatch.setattr(module.sys, "frozen", True, raising=False)
+
+    convert, _, _ = GGUFWorker(uuid4())._quantization_commands(
+        {
+            "model_path": str(source),
+            "output_path": str(tmp_path / "output.gguf"),
+            "work_path": str(tmp_path / "work"),
+            "format": "Q4_K_M",
+            "convert_script": str(converter),
+            "quantize_binary": str(quantizer),
+        }
+    )
+
+    assert convert is not None
+    assert convert[1:3] == ["_convert-hf-to-gguf", str(converter.resolve())]
+
+
 def test_quantization_target_controls_backend_not_hardware_recommendation():
     strategy = {"format": "AWQ_INT4", "backend": "AutoAWQ"}
 

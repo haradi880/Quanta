@@ -40,16 +40,19 @@ python -m pytest tests -m "not integration" --cov=core --cov-branch --cov-fail-u
 ## Windows Enterprise bundle
 
 The standalone one-directory build is fail-closed. Populate `build/vendor`
-with the release-pinned native tools and its SHA-256 `vendor-manifest.json`
-(see `build/vendor/README.md`), then run:
+with `build/populate_windows_vendor.ps1`. It retrieves the pinned official
+llama.cpp release; the release owner must provide a licensed native
+Redis-compatible runtime and explicitly approve its redistribution. See
+`build/vendor/README.md` for the exact command. Then run:
 
 ```powershell
 .\build\build_windows.ps1 -Python .\.venv\Scripts\python.exe -Clean
 ```
 
 The script verifies every native asset before PyInstaller runs and smoke-tests
-`dist\HaradiBots\HaradiBots.exe --help`. Filenames alone are not accepted as
-release evidence.
+`dist\HaradiBots\HaradiBots.exe --help` plus `doctor --json`. The doctor probes
+the llama.cpp executables, converter source tree, and a complete local Redis
+start/PING/stop cycle. Filenames alone are not accepted as release evidence.
 
 ## Local authentication setup
 
