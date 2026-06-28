@@ -32,12 +32,31 @@ def verify_vendor(vendor_root: Path) -> dict[str, str]:
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         assets = manifest["assets"]
+        manifest_files = manifest["files"]
     except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise RuntimeError("offline vendor manifest is invalid") from exc
     if not isinstance(assets, dict):
         raise RuntimeError("offline vendor manifest is invalid")
+    if not isinstance(manifest_files, dict):
+        raise RuntimeError("offline vendor manifest is invalid")
+    if manifest.get("schema_version") != "1":
+        raise RuntimeError("offline vendor manifest schema is unsupported")
 
     files = [path for path in vendor_root.rglob("*") if path.is_file()]
+    payload_files = [
+        path
+        for path in files
+        if path.name not in {MANIFEST_NAME, "README.md"}
+    ]
+    relative_files = {
+        path.relative_to(vendor_root).as_posix(): path for path in payload_files
+    }
+    if set(manifest_files) != set(relative_files):
+        raise RuntimeError("offline vendor file inventory mismatch")
+    for relative, path in relative_files.items():
+        expected = manifest_files.get(relative)
+        if not isinstance(expected, str) or _sha256(path) != expected.lower():
+            raise RuntimeError(f"offline vendor checksum mismatch for file: {relative}")
     indexed = {path.stem.lower(): path for path in files}
     missing = sorted(name for name in REQUIRED_STEMS if name not in indexed)
     converters = [path for path in files if path.name == "convert_hf_to_gguf.py"]
@@ -55,6 +74,13 @@ def verify_vendor(vendor_root: Path) -> dict[str, str]:
         entry = assets.get(name)
         if not isinstance(entry, dict) or not isinstance(entry.get("sha256"), str):
             raise RuntimeError(f"offline vendor manifest has no checksum for: {name}")
+        if not all(
+            isinstance(entry.get(field), str) and entry[field].strip()
+            for field in ("source", "license")
+        ):
+            raise RuntimeError(
+                f"offline vendor manifest provenance is incomplete for: {name}"
+            )
         expected = entry["sha256"].lower()
         if len(expected) != 64 or any(char not in "0123456789abcdef" for char in expected):
             raise RuntimeError(f"offline vendor manifest checksum is invalid for: {name}")

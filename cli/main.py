@@ -11,6 +11,7 @@ from uuid import uuid4
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from cli.doctor import run_offline_doctor
 from core.auth_middleware import ensure_local_api_key
 from core.orchestrator import process_job, purge as purge_runtime
 from core.schemas import (
@@ -112,6 +113,11 @@ def build_parser() -> argparse.ArgumentParser:
     status = subparsers.add_parser("status", help="read local job metadata")
     status.add_argument("job_id")
     subparsers.add_parser("purge", help="invoke the purge controller")
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="verify the packaged offline native runtime",
+    )
+    doctor.add_argument("--json", action="store_true")
     return parser
 
 
@@ -121,6 +127,21 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(run_job(args))
     if args.command == "status":
         return show_status(args.job_id)
+    if args.command == "doctor":
+        try:
+            result = asyncio.run(run_offline_doctor())
+        except Exception as exc:
+            result = {"status": "failed", "error": str(exc)}
+            if args.json:
+                console.print_json(json.dumps(result))
+            else:
+                console.print(f"Offline runtime check failed: {exc}", style="red")
+            return 1
+        if args.json:
+            console.print_json(json.dumps(result))
+        else:
+            console.print("Offline runtime check passed.", style="green")
+        return 0
     console.print(
         "WARNING: purge terminates all workers and permanently deletes local "
         "models, outputs, validation data, credentials, logs, and job history.",

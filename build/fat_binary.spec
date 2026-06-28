@@ -44,7 +44,11 @@ if VENDOR.exists():
     for item in VENDOR.rglob("*"):
         if item.is_file():
             relative_parent = item.parent.relative_to(VENDOR)
-            binaries.append((str(item), str(Path("vendor") / relative_parent)))
+            target = str(Path("vendor") / relative_parent)
+            if item.suffix.lower() in {".exe", ".dll", ".pyd"}:
+                binaries.append((str(item), target))
+            else:
+                datas.append((str(item), target))
 
 analysis = Analysis(
     [str(ROOT / "haradibots_main.py")],

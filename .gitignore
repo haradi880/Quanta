@@ -17,6 +17,8 @@ env/
 # Build and packaging output
 dist/
 *.egg-info/
+build/vendor/*
+!build/vendor/README.md
 
 # Local configuration and secrets
 .env
