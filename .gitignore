@@ -17,6 +17,8 @@ env/
 # Build and packaging output
 dist/
 *.egg-info/
+.build-cache/
+build/fat_binary/
 build/vendor/*
 !build/vendor/README.md
 

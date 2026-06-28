@@ -12,7 +12,13 @@ REQUIRED_STEMS = {
     "llama-cli",
     "llama-quantize",
     "llama-perplexity",
-    "redis-server",
+    "garnet-server",
+}
+REQUIRED_FILENAMES = {
+    "llama-cli": "llama-cli.exe",
+    "llama-quantize": "llama-quantize.exe",
+    "llama-perplexity": "llama-perplexity.exe",
+    "garnet-server": "GarnetServer.exe",
 }
 MANIFEST_NAME = "vendor-manifest.json"
 
@@ -46,7 +52,7 @@ def verify_vendor(vendor_root: Path) -> dict[str, str]:
     payload_files = [
         path
         for path in files
-        if path.name not in {MANIFEST_NAME, "README.md"}
+        if path != manifest_path and path != vendor_root / "README.md"
     ]
     relative_files = {
         path.relative_to(vendor_root).as_posix(): path for path in payload_files
@@ -57,8 +63,18 @@ def verify_vendor(vendor_root: Path) -> dict[str, str]:
         expected = manifest_files.get(relative)
         if not isinstance(expected, str) or _sha256(path) != expected.lower():
             raise RuntimeError(f"offline vendor checksum mismatch for file: {relative}")
-    indexed = {path.stem.lower(): path for path in files}
-    missing = sorted(name for name in REQUIRED_STEMS if name not in indexed)
+    indexed = {
+        name: next(
+            (
+                path
+                for path in files
+                if path.name.lower() == filename.lower()
+            ),
+            None,
+        )
+        for name, filename in REQUIRED_FILENAMES.items()
+    }
+    missing = sorted(name for name, path in indexed.items() if path is None)
     converters = [path for path in files if path.name == "convert_hf_to_gguf.py"]
     if not converters:
         missing.append("convert_hf_to_gguf.py")

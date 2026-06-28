@@ -11,8 +11,15 @@ NATIVE_ENV = {
     "llama-cli": "HARADIBOTS_LLAMA_BIN",
     "llama-quantize": "HARADIBOTS_LLAMA_QUANTIZE_BIN",
     "llama-perplexity": "HARADIBOTS_LLAMA_PERPLEXITY_BIN",
-    "redis-server": "HARADIBOTS_REDIS_BIN",
+    "garnet-server": "HARADIBOTS_GARNET_BIN",
     "convert_hf_to_gguf.py": "HARADIBOTS_GGUF_CONVERT_SCRIPT",
+}
+NATIVE_FILENAMES = {
+    "llama-cli": "llama-cli.exe",
+    "llama-quantize": "llama-quantize.exe",
+    "llama-perplexity": "llama-perplexity.exe",
+    "garnet-server": "GarnetServer.exe",
+    "convert_hf_to_gguf.py": "convert_hf_to_gguf.py",
 }
 
 
@@ -31,7 +38,14 @@ def configure_native_runtime(bundle_root: Path | None = None) -> dict[str, str]:
         if not path.is_file():
             continue
         stem = path.stem.lower()
-        key = path.name if path.name == "convert_hf_to_gguf.py" else stem
+        key = next(
+            (
+                name
+                for name, filename in NATIVE_FILENAMES.items()
+                if path.name.lower() == filename.lower()
+            ),
+            stem,
+        )
         variable = NATIVE_ENV.get(key)
         if variable and variable not in os.environ:
             os.environ[variable] = str(path.resolve())

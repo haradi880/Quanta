@@ -213,8 +213,8 @@ tested,” or “externally verified” precisely and must not use “production
 
 The one-dir Fat Binary build has a fail-closed native manifest and complete
 SHA-256 file inventory. The pinned llama.cpp CLI, quantizer, perplexity
-evaluator, conversion sources, and a redistribution-approved Redis-compatible
-runtime must exist in the vendor tree before a release build. Frozen runtime
+evaluator, conversion sources, and self-contained Microsoft Garnet runtime
+must exist in the vendor tree before a release build. Frozen runtime
 discovery sets their paths without networking. A private frozen entrypoint
 executes HF-to-GGUF conversion because a PyInstaller executable cannot be used
 as a general Python interpreter. The Docker API runs as a non-root user and

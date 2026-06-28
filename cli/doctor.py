@@ -6,12 +6,18 @@ import asyncio
 import os
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
+from redis.asyncio import Redis
 from core.runtime import NATIVE_ENV, configure_native_runtime
 from telemetry.redis_manager import LocalRedisManager
 
 
-async def _probe_process(path: str, *arguments: str) -> dict[str, Any]:
+async def _probe_process(
+    path: str,
+    *arguments: str,
+    allowed_returncodes: tuple[int, ...] = (0,),
+) -> dict[str, Any]:
     process = await asyncio.create_subprocess_exec(
         path,
         *arguments,
@@ -24,13 +30,37 @@ async def _probe_process(path: str, *arguments: str) -> dict[str, Any]:
         process.kill()
         await process.wait()
         raise RuntimeError(f"native probe timed out: {Path(path).name}") from None
-    if process.returncode != 0:
+    text = output.decode("utf-8", errors="replace").strip()
+    if process.returncode not in allowed_returncodes or not text:
         raise RuntimeError(
             f"native probe failed ({process.returncode}): {Path(path).name}"
         )
     return {
         "path": str(Path(path).resolve()),
-        "version_output": output.decode("utf-8", errors="replace").strip()[:500],
+        "version_output": text[:500],
+    }
+
+
+async def _verify_resp_operations(url: str) -> dict[str, Any]:
+    client = Redis.from_url(url, decode_responses=True)
+    key = f"haradibots:doctor:{uuid4()}"
+    expected = {"gpu": "0", "status": "healthy"}
+    try:
+        ping = await client.ping()
+        hset_count = await client.hset(key, mapping=expected)
+        values = await client.hgetall(key)
+        _, keys = await client.scan(cursor=0, match=key, count=100)
+        scan_match = key in keys
+    finally:
+        await client.delete(key)
+        await client.aclose()
+    if ping is not True or values != expected or not scan_match:
+        raise RuntimeError("Garnet RESP compatibility probe failed")
+    return {
+        "PING": "PONG",
+        "HSET": hset_count,
+        "HGETALL": values,
+        "SCAN": keys,
     }
 
 
@@ -51,10 +81,18 @@ async def run_offline_doctor() -> dict[str, Any]:
             raise RuntimeError(f"packaged converter dependency is missing: {dependency}")
 
     probes = {}
-    for name in ("llama-cli", "llama-quantize", "llama-perplexity"):
-        probes[name] = await _probe_process(resolved[name], "--version")
+    probes["llama-cli"] = await _probe_process(resolved["llama-cli"], "--version")
+    probes["llama-quantize"] = await _probe_process(
+        resolved["llama-quantize"],
+        "--help",
+        allowed_returncodes=(0, 1),
+    )
+    probes["llama-perplexity"] = await _probe_process(
+        resolved["llama-perplexity"],
+        "--version",
+    )
 
-    manager = LocalRedisManager(binary_path=resolved["redis-server"], port=0)
+    manager = LocalRedisManager(binary_path=resolved["garnet-server"], port=0)
     # Reserve an ephemeral loopback port briefly, then hand it to the process.
     import socket
 
@@ -64,6 +102,7 @@ async def run_offline_doctor() -> dict[str, Any]:
     url = await manager.start(timeout_seconds=15)
     try:
         redis_ok = await manager._reachable()
+        resp_checks = await _verify_resp_operations(url)
     finally:
         await manager.stop()
     if not redis_ok or manager.process is not None:
@@ -75,4 +114,5 @@ async def run_offline_doctor() -> dict[str, Any]:
         "converter": str(converter.resolve()),
         "redis_url": url,
         "redis_stopped": True,
+        "resp_checks": resp_checks,
     }

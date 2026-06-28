@@ -18,7 +18,7 @@ def test_offline_doctor_checks_all_native_assets_and_redis(tmp_path, monkeypatch
     (tmp_path / "gguf-py").mkdir()
     probed = []
 
-    async def probe(path, *arguments):
+    async def probe(path, *arguments, **options):
         probed.append((Path(path).stem, arguments))
         return {"path": path, "version_output": "version"}
 
@@ -40,11 +40,25 @@ def test_offline_doctor_checks_all_native_assets_and_redis(tmp_path, monkeypatch
     monkeypatch.setattr(doctor, "configure_native_runtime", lambda: {})
     monkeypatch.setattr(doctor, "_probe_process", probe)
     monkeypatch.setattr(doctor, "LocalRedisManager", Manager)
+    monkeypatch.setattr(
+        doctor,
+        "_verify_resp_operations",
+        lambda url: asyncio.sleep(
+            0,
+            result={
+                "PING": "PONG",
+                "HSET": 2,
+                "HGETALL": {"status": "healthy"},
+                "SCAN": ["key"],
+            },
+        ),
+    )
 
     result = asyncio.run(doctor.run_offline_doctor())
 
     assert result["status"] == "healthy"
     assert result["redis_stopped"] is True
+    assert result["resp_checks"]["PING"] == "PONG"
     assert {name for name, _ in probed} == {
         "llama-cli",
         "llama-quantize",

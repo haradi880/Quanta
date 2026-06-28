@@ -7,10 +7,10 @@ test pass.
 
 ## Enterprise Fat Binary
 
-1. Run `build/populate_windows_vendor.ps1` with a redistribution-approved
-   native Redis-compatible runtime. The script retrieves the pinned official
-   llama.cpp CPU release and converter source, preserves license notices, and
-   writes a full SHA-256 file inventory. See `build/vendor/README.md`.
+1. Run `build/populate_windows_vendor.ps1`. The script retrieves pinned
+   llama.cpp sources and builds pinned Microsoft Garnet as a self-contained
+   native Windows x64 RESP server. It preserves all required license/NOTICE
+   files and writes a full SHA-256 inventory. See `build/vendor/README.md`.
 2. Verify the offline payload:
 
    ```powershell
@@ -33,9 +33,9 @@ test pass.
    ```
 
 6. The doctor must report all three llama.cpp tools, converter dependencies,
-   and a successful owned Redis start/PING/stop cycle. Then submit a local GGUF
-   inference job and verify no network call, import error, or surviving worker
-   process.
+   and a successful owned Garnet
+   `PING`/`HSET`/`HGETALL`/`SCAN`/stop cycle. Then submit a local GGUF inference
+   job and verify no network call, import error, or surviving worker process.
 
 The binary automatically resolves bundled native tools. Its private frozen
 converter launcher executes the pinned converter and bundled `conversion/` and

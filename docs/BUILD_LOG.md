@@ -723,3 +723,38 @@ None.
 - Local evidence: PowerShell scripts parse successfully; Ruff passes; 149
   tests pass, one optional cluster test is skipped, and core branch coverage is
   80.24%.
+
+## 2026-06-28 — Self-contained Garnet Windows runtime
+
+- Replaced the unresolved generic Redis-compatible runtime with Microsoft
+  Garnet v1.1.10, built from signed commit
+  `3986e6e654c693e87786e56f9ce1e61c4be06756` for `win-x64` as a
+  self-contained .NET 10 application.
+- The deterministic build uses checksum-verified .NET SDK 10.0.203 and requires
+  no machine-wide .NET installation, WSL, Docker, trial, or paid runtime.
+- Confirmed that the bundled `build/vendor/garnet/` payload contains and hashes:
+  - `LICENSE.Garnet-MIT.txt` — Garnet’s MIT license;
+  - `NOTICE.Garnet.md` — Garnet third-party MIT/BSD/CC0 attributions;
+  - `LICENSE.dotnet-library.html` — Microsoft .NET Library License;
+  - `NOTICE.dotnet-third-party.txt` — self-contained .NET third-party notices.
+- Garnet is RESP-compatible and intentionally described as “close-enough,” not
+  100%-identical to Redis. New telemetry commands must be checked against
+  Garnet’s API compatibility table before use.
+- Real verification against the exact bundled `GarnetServer.exe` completed:
+  - `PING` returned `PONG`;
+  - `HSET` created two fields;
+  - `HGETALL` returned `{"gpu": "0", "status": "healthy"}`;
+  - `SCAN` returned the inserted `haradibots:doctor:<uuid>` key;
+  - the owned Garnet process stopped and no server process remained.
+- Built the actual PyInstaller one-directory distribution and ran its packaged
+  `HaradiBots.exe doctor --json`, not the source-tree CLI. The packaged doctor
+  repeated the same four RESP checks successfully against
+  `_internal/vendor/garnet/GarnetServer.exe` and stopped the process.
+- Packaged artifact evidence: 17,328 files, 1,042,498,211 bytes;
+  `HaradiBots.exe` SHA-256
+  `77611F0F3CF065424CC71DDAE2462D113CF937B8A35E5EE5826D9A9EF4FDFEBC`.
+- Confirmed the packaged distribution contains
+  `LICENSE.Garnet-MIT.txt`, `NOTICE.Garnet.md`,
+  `LICENSE.dotnet-library.html`, and `NOTICE.dotnet-third-party.txt`.
+- Full local regression evidence after integration: 149 passed, one optional
+  cluster test skipped, and 80.25% branch-aware core coverage.

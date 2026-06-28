@@ -93,9 +93,9 @@ a dedicated worker thread and drains events on the GUI main loop.
 `notebooks/` provides Kaggle and Colab adapters with notebook-secret lookup,
 nested event-loop support, and streaming progress display.
 
-`telemetry/` separates persistent SQLite job metadata from the Redis telemetry
-hot path. In the primary Enterprise Fat Binary deployment, Redis is a bundled
-local background process, not a cloud dependency. Redis writes are scheduled
+`telemetry/` separates persistent SQLite job metadata from the RESP telemetry
+hot path. In the primary Enterprise Fat Binary deployment, Microsoft Garnet is
+a bundled local background process, not a cloud dependency. RESP writes are scheduled
 without awaiting network I/O. The independent 10-second aggregator has durable
 export disabled by default for v1; Prometheus or PostgreSQL can be explicitly
 enabled for team/server deployments. Threshold policies are loaded once and
@@ -148,11 +148,16 @@ of length `N`. Domain deltas are the absolute difference
 good through `0.15`, moderate through `0.35`, poor through `0.60`, and critical
 above `0.60`. Poor requires confirmation and critical is quarantined.
 
-## Distribution mode
+## Deployment Mode
 
 The primary distribution is a single-machine Enterprise Fat Binary / executable
-download. Python dependencies and the local Redis process are bundled at build
-time. PostgreSQL, Ray, SLURM, Kubernetes, and remote Prometheus are optional
+download. Python dependencies and Microsoft Garnet are bundled at build time.
+Garnet is native Windows, uses a self-contained .NET runtime, and implements
+the RESP protocol used by Redis clients. It is explicitly “close-enough,” not
+100%-identical to Redis. The standalone telemetry path currently relies only
+on `PING`, `HSET`, `HGETALL`, and `SCAN`; every future telemetry command must
+be re-checked against Garnet’s API compatibility table before support is
+assumed. PostgreSQL, Ray, SLURM, Kubernetes, and remote Prometheus are optional
 team/server capabilities and are never prerequisites for standalone operation
 or local Done When checks.
 
