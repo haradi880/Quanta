@@ -606,3 +606,23 @@ None.
 - Dangerous home/current/root paths are rejected.
 - CLI confirmation tests prove lowercase confirmation performs no deletion.
 - Redis tests prove an existing loopback Redis is reused and a missing bundled binary fails clearly.
+## 2026-06-28 — Standalone Packaging and CI Foundations
+
+### Changes
+
+- Added a one-dir PyInstaller specification and executable entry point.
+- Added a fail-closed native bundle verifier for llama.cpp tools and Redis.
+- Added frozen-runtime native tool discovery with no background downloads.
+- Added a non-root NVIDIA CUDA Docker image with health check.
+- Replaced the placeholder import test with a deliberate-bad-import AST linter.
+- Added four-job GitHub Actions CI and explicit development dependencies.
+- Added `DEPLOYMENT.md` with Fat Binary, Docker, and release gates.
+
+### Verification
+
+- Ruff fatal/static checks pass.
+- Import isolation catches a deliberate CLI-to-engine violation.
+- Packaging tests prove incomplete native bundles fail closed and complete fake bundles resolve every runtime variable.
+- PyInstaller manifest is statically verified as one-dir.
+- Docker could not be built locally because this Windows host has no Docker executable; CI remains the authoritative build check.
+- Measured total coverage is 46.64%, below the required 80%; enforcement is intentionally not yet enabled and production release remains blocked.

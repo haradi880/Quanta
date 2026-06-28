@@ -202,3 +202,16 @@ The project is not production-ready until all of the following are evidenced:
 
 Until then, documentation must use “implemented,” “unit tested,” “integration
 tested,” or “externally verified” precisely and must not use “production-ready.”
+
+## 9. Packaging evidence
+
+The one-dir Fat Binary build has a fail-closed native manifest. llama.cpp CLI,
+quantizer, perplexity evaluator, conversion script, and Redis must exist in the
+vendor tree before a release build. Frozen runtime discovery sets their paths
+without networking. The Docker API runs as a non-root user and exposes only its
+health/API port.
+
+Static packaging tests pass, but this host has neither the native vendor payload
+nor Docker. Therefore offline Fat Binary execution and container startup remain
+unverified release gates. Current measured coverage is 46.64%; the required 80%
+gate is also not yet satisfied.
