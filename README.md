@@ -37,6 +37,20 @@ Run the enforced production-core test gate with:
 python -m pytest tests -m "not integration" --cov=core --cov-branch --cov-fail-under=80
 ```
 
+## Windows Enterprise bundle
+
+The standalone one-directory build is fail-closed. Populate `build/vendor`
+with the release-pinned native tools and its SHA-256 `vendor-manifest.json`
+(see `build/vendor/README.md`), then run:
+
+```powershell
+.\build\build_windows.ps1 -Python .\.venv\Scripts\python.exe -Clean
+```
+
+The script verifies every native asset before PyInstaller runs and smoke-tests
+`dist\HaradiBots\HaradiBots.exe --help`. Filenames alone are not accepted as
+release evidence.
+
 ## Local authentication setup
 
 Direct CLI and notebook use automatically creates a private local credential;

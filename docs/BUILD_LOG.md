@@ -685,3 +685,17 @@ None.
   conversion, perplexity, Redis lifecycle, and purge on a clean offline machine.
 - Exercise real Ray, SLURM, and Kubernetes schedulers only for optional
   team/server distribution; these are not standalone v1 prerequisites.
+
+## 2026-06-28 — Standalone packaging contract correction
+
+- Corrected `build/fat_binary.spec` repository-root resolution. Since the spec
+  lives in `build/`, its entry point, config, and vendor paths must resolve from
+  the parent directory.
+- Added `build/build_windows.ps1`, which verifies the native payload before
+  invoking PyInstaller and smoke-tests the packaged CLI.
+- Replaced filename-only vendor acceptance with a required SHA-256 manifest.
+  Modified or unpinned native tools now fail the release gate.
+- Added Windows CI coverage for the packaging contract and expected fail-closed
+  behavior in a checkout without distributable native assets.
+- Local evidence: packaging/runtime unit tests pass; the actual release remains
+  gated pending a redistribution-reviewed native manifest and payload.
