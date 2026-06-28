@@ -19,8 +19,10 @@ from core.schemas import (
     InterfaceType,
     JobEnvelope,
     JobMode,
+    JobOperation,
     ModelSource,
     SystemPrompt,
+    ValidationPolicy,
 )
 from telemetry.db import create_database, get_job
 
@@ -35,12 +37,14 @@ def build_envelope(args: argparse.Namespace) -> JobEnvelope:
         else ModelSource(repo_id=args.model)
     )
     return JobEnvelope(
-        schema_version="3.0",
+        schema_version="3.1",
         job_id=uuid4(),
         auth=AuthBlock(api_key=api_key),
         interface=InterfaceType.CLI,
         mode=JobMode(args.mode),
-        model_source=source,
+        operation=JobOperation.INFER,
+        source_model=source,
+        validation_policy=ValidationPolicy(),
         hardware_override=None,
         quantization_override=None,
         cluster_config=None,

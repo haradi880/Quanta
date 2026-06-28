@@ -18,9 +18,11 @@ from core.schemas import (
     InterfaceType,
     JobEnvelope,
     JobMode,
+    JobOperation,
     ModelSource,
     ProgressEvent,
     SystemPrompt,
+    ValidationPolicy,
 )
 
 
@@ -112,7 +114,7 @@ def test_orchestrator_passes_acquired_gguf_path_to_worker(tmp_path, monkeypatch)
         async def execute(self, strategy):
             captured.update(strategy)
             yield ProgressEvent(
-                schema_version="3.0",
+                schema_version="3.1",
                 job_id=job_id,
                 event_type=EventType.QUANTIZATION_PROGRESS,
                 timestamp_utc=datetime.now(timezone.utc),
@@ -210,7 +212,9 @@ def test_orchestrator_passes_acquired_gguf_path_to_worker(tmp_path, monkeypatch)
         auth=AuthBlock(api_key="internal"),
         interface=InterfaceType.CLI,
         mode=JobMode.AUTO,
-        model_source=ModelSource(repo_id="owner/model-gguf"),
+        operation=JobOperation.INFER,
+        source_model=ModelSource(repo_id="owner/model-gguf"),
+        validation_policy=ValidationPolicy(),
         system_prompt=SystemPrompt(preset_id="default"),
         callbacks=CallbackConfig(),
     )
@@ -242,7 +246,9 @@ def test_orchestrator_blocks_non_validation_result():
         auth=AuthBlock(api_key="internal"),
         interface=InterfaceType.CLI,
         mode=JobMode.AUTO,
-        model_source=ModelSource(repo_id="owner/model"),
+        operation=JobOperation.INFER,
+        source_model=ModelSource(repo_id="owner/model"),
+        validation_policy=ValidationPolicy(),
         system_prompt=SystemPrompt(preset_id="default"),
         callbacks=CallbackConfig(),
     )

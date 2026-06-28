@@ -540,3 +540,20 @@ None.
 - Documented the missing operation semantics and source-versus-candidate distinction in v3.0.
 - Defined operation-specific state paths and a fail-closed production acceptance gate.
 - Tightened the current Orchestrator so a backend-specific output dictionary can no longer masquerade as `ValidationResult`; artifact delivery is blocked unless strict original-versus-quantized validation is available.
+## 2026-06-28 — v3.1 Operation Contract Migration
+
+### Changes
+
+- Bumped strict wire contracts from schema 3.0 to 3.1.
+- Replaced ambiguous `model_source` with required `operation`, `source_model`, `candidate_artifact`, `target`, and `validation_policy` fields.
+- Added operation-specific validation: quantize requires a target; validate requires a candidate; required golden validation cannot be empty.
+- Added distinct model-inspection and inference progress events.
+- Added direct `inspect → teardown` and `infer → teardown` state paths.
+- Kept quantization on the mandatory validation path.
+- Migrated CLI, API payload handling, GUI, notebook adapter, Orchestrator, and tests together.
+
+### Verification
+
+- v3.0 event literals are rejected by the strict v3.1 contracts.
+- Invalid quantize and validate envelopes fail schema construction.
+- All automated tests pass after the migration.

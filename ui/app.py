@@ -20,8 +20,10 @@ from core.schemas import (
     InterfaceType,
     JobEnvelope,
     JobMode,
+    JobOperation,
     ModelSource,
     SystemPrompt,
+    ValidationPolicy,
 )
 
 
@@ -49,12 +51,14 @@ def build_envelope(model: str, mode: str, jwt_token: str) -> JobEnvelope:
         else ModelSource(repo_id=model)
     )
     return JobEnvelope(
-        schema_version="3.0",
+        schema_version="3.1",
         job_id=uuid4(),
         auth=AuthBlock(jwt_token=jwt_token),
         interface=InterfaceType.GUI,
         mode=JobMode(mode),
-        model_source=source,
+        operation=JobOperation.INFER,
+        source_model=source,
+        validation_policy=ValidationPolicy(),
         hardware_override=None,
         quantization_override=None,
         cluster_config=None,

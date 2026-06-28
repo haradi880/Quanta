@@ -75,6 +75,11 @@ class GGUFWorker(BaseWorker):
         strategy_config: dict[str, Any],
     ) -> AsyncIterator[ProgressEvent]:
         self._last_strategy = dict(strategy_config)
+        progress_event = (
+            EventType.INFERENCE_PROGRESS
+            if strategy_config.get("operation") == "infer"
+            else EventType.QUANTIZATION_PROGRESS
+        )
         try:
             command = self._command(strategy_config)
             self.process = await asyncio.create_subprocess_exec(
@@ -87,7 +92,7 @@ class GGUFWorker(BaseWorker):
             return
 
         yield self._event(
-            EventType.QUANTIZATION_PROGRESS,
+            progress_event,
             {
                 "backend": "gguf",
                 "status": "launched",
@@ -111,7 +116,7 @@ class GGUFWorker(BaseWorker):
                     max(float(percentage_match.group(1)), 0.0),
                     100.0,
                 )
-            yield self._event(EventType.QUANTIZATION_PROGRESS, payload)
+            yield self._event(progress_event, payload)
 
         return_code = await self.process.wait()
         if return_code != 0:
@@ -121,7 +126,7 @@ class GGUFWorker(BaseWorker):
             )
             return
         yield self._event(
-            EventType.QUANTIZATION_PROGRESS,
+            progress_event,
             {"backend": "gguf", "status": "complete", "progress_pct": 100.0},
         )
 

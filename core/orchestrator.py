@@ -24,6 +24,7 @@ from core.schemas import (
     EventType,
     HardwareProfile,
     JobEnvelope,
+    JobOperation,
     ProgressEvent,
     SCHEMA_VERSION,
     TeardownComplete,
@@ -54,11 +55,13 @@ TRANSITION_TABLE: dict[tuple[JobState, str], JobState] = {
     (JobState.PROFILING, "profile_complete"): JobState.PLANNING,
     (JobState.PROFILING, "failed"): JobState.ERROR,
     (JobState.PLANNING, "plan_complete"): JobState.EXECUTING,
+    (JobState.PLANNING, "inspection_complete"): JobState.TEARDOWN,
     (JobState.PLANNING, "cluster_required"): JobState.CLUSTER_DISPATCH,
     (JobState.PLANNING, "failed"): JobState.ERROR,
     (JobState.CLUSTER_DISPATCH, "dispatch_complete"): JobState.EXECUTING,
     (JobState.CLUSTER_DISPATCH, "failed"): JobState.ERROR,
     (JobState.EXECUTING, "execution_complete"): JobState.VALIDATING,
+    (JobState.EXECUTING, "inference_complete"): JobState.TEARDOWN,
     (JobState.EXECUTING, "failed"): JobState.ERROR,
     (JobState.VALIDATING, "validation_complete"): JobState.TEARDOWN,
     (JobState.VALIDATING, "failed"): JobState.ERROR,
@@ -156,10 +159,11 @@ class Orchestrator:
         strategy: dict[str, Any],
     ) -> dict[str, Any]:
         execution_strategy = dict(strategy)
-        if envelope.model_source.repo_id is not None:
-            execution_strategy["model_source"] = envelope.model_source.repo_id
-        if envelope.model_source.local_path is not None:
-            execution_strategy["model_path"] = envelope.model_source.local_path
+        execution_strategy["operation"] = envelope.operation.value
+        if envelope.source_model.repo_id is not None:
+            execution_strategy["model_source"] = envelope.source_model.repo_id
+        if envelope.source_model.local_path is not None:
+            execution_strategy["model_path"] = envelope.source_model.local_path
 
         cache_root = Path(
             os.environ.get(
@@ -443,8 +447,8 @@ class Orchestrator:
                 },
             )
 
-            if envelope.model_source.local_path is not None:
-                local_path = Path(envelope.model_source.local_path)
+            if envelope.source_model.local_path is not None:
+                local_path = Path(envelope.source_model.local_path)
                 if not local_path.exists():
                     raise FileNotFoundError(
                         f"local model path does not exist: {local_path}"
@@ -454,7 +458,7 @@ class Orchestrator:
                     "Hugging Face metadata phase"
                 )
 
-            repo_id = envelope.model_source.repo_id
+            repo_id = envelope.source_model.repo_id
             if repo_id is None:
                 raise RuntimeError("model source contains no repository identifier")
             model_meta = await inspect_repo(repo_id)
@@ -468,6 +472,25 @@ class Orchestrator:
                     "model parameter count is unavailable; strategy cannot be planned"
                 )
 
+            if envelope.operation is JobOperation.INSPECT:
+                self._transition_job(envelope.job_id, "inspection_complete")
+                yield self._event(
+                    envelope,
+                    EventType.MODEL_INSPECTION,
+                    {
+                        "state": JobState.TEARDOWN.value,
+                        "status": "complete",
+                        "model_meta": model_meta,
+                    },
+                )
+                succeeded = True
+                return
+            if envelope.operation is JobOperation.VALIDATE:
+                raise RuntimeError(
+                    "v3.1 validate requires the reference/candidate evaluator; "
+                    "it is not yet connected"
+                )
+
             acquired_model_path = None
             if any(
                 filename.lower().endswith(".gguf")
@@ -477,7 +500,7 @@ class Orchestrator:
                     repo_id,
                     model_meta,
                     str(model_meta.get("quant_format") or "GGUF"),
-                    revision=envelope.model_source.revision,
+                    revision=envelope.source_model.revision,
                 )
                 gguf_metadata = inspect_gguf_metadata(acquired_model_path)
                 for field_name, value in gguf_metadata.items():
@@ -508,7 +531,7 @@ class Orchestrator:
                     repo_id,
                     model_meta,
                     str(strategy["format"]),
-                    revision=envelope.model_source.revision,
+                    revision=envelope.source_model.revision,
                 )
             if envelope.cluster_config is not None:
                 state = self._transition_job(
@@ -551,6 +574,19 @@ class Orchestrator:
                 execution_strategy,
             ):
                 yield worker_event
+            if envelope.operation is JobOperation.INFER:
+                self._transition_job(envelope.job_id, "inference_complete")
+                yield self._event(
+                    envelope,
+                    EventType.INFERENCE_PROGRESS,
+                    {
+                        "state": JobState.TEARDOWN.value,
+                        "status": "complete",
+                    },
+                )
+                succeeded = True
+                return
+
             state = self._transition_job(envelope.job_id, "execution_complete")
             yield self._event(
                 envelope,

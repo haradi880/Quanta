@@ -15,7 +15,7 @@ from ui.app import build_envelope as build_gui_envelope
 
 def event_for(job_id):
     return ProgressEvent(
-        schema_version="3.0",
+        schema_version="3.1",
         job_id=job_id,
         event_type=EventType.COMPLETE,
         timestamp_utc=datetime.now(timezone.utc),
