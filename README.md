@@ -149,6 +149,12 @@ header authentication. Notebook environments should install
 `requirements-notebook.txt`, which excludes platform-specific compiled
 backends and preserves the runtime-provided Torch build.
 
+For a real Kaggle/Colab GGUF smoke test, build llama.cpp in the notebook,
+set `HARADIBOTS_LLAMA_BIN` to its `llama-cli`, and use a GGUF repository such
+as `ggml-org/tiny-llamas`. HaradiBots selects one compatible GGUF file,
+downloads it into the sandbox cache, reads its header metadata, and passes the
+resolved local file—not the repository name—to the worker.
+
 ## Prompt and context control
 
 `core.prompt_controller.format_system_prompt()` formats system prompts for
