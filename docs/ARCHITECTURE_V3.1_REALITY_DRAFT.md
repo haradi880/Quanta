@@ -97,6 +97,12 @@ VALIDATE → PERSIST → TEARDOWN → IDLE
 AUTHENTICATE → PROFILE → ACQUIRE_REFERENCE → ACQUIRE_CANDIDATE → VALIDATE →
 PERSIST → TEARDOWN → IDLE
 
+The validate path now has concrete evaluator adapters: Transformers evaluates
+canonical repositories in-process with lazy imports, while GGUF evaluation uses
+the separately packaged `llama-perplexity` subprocess. Both evaluators receive
+identical domain text. A validation result is persisted only after strict
+schema validation; critical results fail closed.
+
 ### Infer
 
 AUTHENTICATE → PROFILE → INSPECT → ACQUIRE_ARTIFACT → LOAD → INFER →

@@ -20,6 +20,7 @@ from core.auth_middleware import authenticate
 from core.hf_inspector import inspect_repo
 from core.profiler import snapshot
 from core.schemas import (
+    ArtifactReference,
     ErrorEnvelope,
     EventType,
     HardwareProfile,
@@ -30,6 +31,8 @@ from core.schemas import (
     TeardownComplete,
     ValidationResult,
 )
+from core.validation_service import build_evaluator, validate_reference_candidate
+from telemetry.db import create_database, insert_validation_result, upsert_job
 
 
 LOGGER = logging.getLogger(__name__)
@@ -56,6 +59,7 @@ TRANSITION_TABLE: dict[tuple[JobState, str], JobState] = {
     (JobState.PROFILING, "failed"): JobState.ERROR,
     (JobState.PLANNING, "plan_complete"): JobState.EXECUTING,
     (JobState.PLANNING, "inspection_complete"): JobState.TEARDOWN,
+    (JobState.PLANNING, "validation_ready"): JobState.VALIDATING,
     (JobState.PLANNING, "cluster_required"): JobState.CLUSTER_DISPATCH,
     (JobState.PLANNING, "failed"): JobState.ERROR,
     (JobState.CLUSTER_DISPATCH, "dispatch_complete"): JobState.EXECUTING,
@@ -95,6 +99,86 @@ class Orchestrator:
     def _set_initial_state(self, job_id: UUID) -> None:
         self._job_states[job_id] = JobState.IDLE
         self._state_history[job_id] = [JobState.IDLE]
+
+    @staticmethod
+    def _source_label(source: Any) -> str:
+        return str(source.repo_id or source.local_path)
+
+    async def _resolve_candidate(
+        self,
+        candidate: ArtifactReference,
+    ) -> ArtifactReference:
+        if candidate.local_path is not None:
+            path = Path(candidate.local_path).expanduser()
+            if not path.is_file():
+                raise FileNotFoundError(f"candidate artifact does not exist: {path}")
+            return candidate.model_copy(update={"local_path": str(path.resolve())})
+        if candidate.repo_id is None:
+            raise RuntimeError("candidate artifact contains no source")
+        metadata = await inspect_repo(candidate.repo_id)
+        if not metadata["repo_exists"]:
+            raise FileNotFoundError(
+                f"candidate repository does not exist: {candidate.repo_id}"
+            )
+        if any(name.lower().endswith(".gguf") for name in metadata["file_manifest"]):
+            path = await acquire_gguf_artifact(
+                candidate.repo_id,
+                metadata,
+                candidate.format or str(metadata.get("quant_format") or "GGUF"),
+                revision=candidate.revision,
+            )
+            return ArtifactReference(local_path=path, format="gguf")
+        return candidate
+
+    async def _run_validation_operation(
+        self,
+        envelope: JobEnvelope,
+    ) -> ValidationResult:
+        if envelope.candidate_artifact is None:
+            raise RuntimeError("validate operation requires a candidate artifact")
+        candidate_source = await self._resolve_candidate(
+            envelope.candidate_artifact
+        )
+        reference = await build_evaluator(envelope.source_model)
+        candidate = await build_evaluator(candidate_source)
+        try:
+            result = await validate_reference_candidate(
+                reference,
+                candidate,
+                policy=envelope.validation_policy,
+                golden_prompts=envelope.validation_prompts,
+            )
+        finally:
+            await asyncio.gather(
+                reference.close(),
+                candidate.close(),
+                return_exceptions=True,
+            )
+        engine = await asyncio.to_thread(create_database)
+        try:
+            await asyncio.to_thread(
+                upsert_job,
+                engine,
+                job_id=str(envelope.job_id),
+                model_source=self._source_label(envelope.source_model),
+                output_format=candidate_source.format or "unknown",
+                state="VALIDATED",
+                completed_at=datetime.now(timezone.utc),
+            )
+            await asyncio.to_thread(
+                insert_validation_result,
+                engine,
+                job_id=str(envelope.job_id),
+                composite_delta=result.composite_delta,
+                severity=result.severity_tier,
+                per_domain={
+                    name: value.model_dump(mode="json")
+                    for name, value in result.per_domain.items()
+                },
+            )
+        finally:
+            await asyncio.to_thread(engine.dispose)
+        return result
 
     def _transition_job(self, job_id: UUID, event: str) -> JobState:
         current = self._job_states[job_id]
@@ -447,6 +531,29 @@ class Orchestrator:
                 },
             )
 
+            if envelope.operation is JobOperation.VALIDATE:
+                state = self._transition_job(
+                    envelope.job_id,
+                    "validation_ready",
+                )
+                validation = await self._run_validation_operation(envelope)
+                yield self._event(
+                    envelope,
+                    EventType.VALIDATION_RESULT,
+                    {
+                        "state": state.value,
+                        "status": "complete",
+                        "validation_result": validation.model_dump(mode="json"),
+                    },
+                )
+                if validation.quarantined:
+                    raise RuntimeError(
+                        "critical validation result quarantined the candidate"
+                    )
+                self._transition_job(envelope.job_id, "validation_complete")
+                succeeded = True
+                return
+
             if envelope.source_model.local_path is not None:
                 local_path = Path(envelope.source_model.local_path)
                 if not local_path.exists():
@@ -485,12 +592,6 @@ class Orchestrator:
                 )
                 succeeded = True
                 return
-            if envelope.operation is JobOperation.VALIDATE:
-                raise RuntimeError(
-                    "v3.1 validate requires the reference/candidate evaluator; "
-                    "it is not yet connected"
-                )
-
             acquired_model_path = None
             if any(
                 filename.lower().endswith(".gguf")

@@ -557,3 +557,19 @@ None.
 - v3.0 event literals are rejected by the strict v3.1 contracts.
 - Invalid quantize and validate envelopes fail schema construction.
 - All automated tests pass after the migration.
+## 2026-06-28 — Genuine Reference/Candidate Validation
+
+### Changes
+
+- Added lazy Transformers and subprocess-isolated llama-perplexity evaluators.
+- Added async policy-selected logic, retrieval, code, and golden-prompt validation.
+- Renormalized weights when a validation policy selects fewer than three domains.
+- Connected v3.1 `validate` to reference/candidate resolution, strict `ValidationResult`, evaluator cleanup, SQLite job metadata, and validation-summary persistence.
+- Critical validation remains fail-closed and enters the error/teardown path.
+
+### Verification
+
+- Fixed evaluators prove absolute PPL deltas and weighted severity behavior.
+- Golden prompts remain separate from the composite.
+- llama-perplexity output parsing accepts its final PPL line.
+- An Orchestrator integration test persists a strict three-domain result and finishes through teardown.
